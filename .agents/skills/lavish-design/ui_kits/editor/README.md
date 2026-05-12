@@ -1,6 +1,7 @@
 # Lavish Editor — UI kit
 
-A high-fidelity, clickable recreation of the **Lavish Editor chrome** that the `lavish-axi` CLI launches in a browser. Every styling value (colors, radii, shadows, spacing, type) is pulled either directly from `src/chrome.css` and `src/artifact-sdk.js` in the [`kunchenguid/lavish-axi`](https://github.com/kunchenguid/lavish-axi) repo or from `colors_and_type.css` in the parent of this folder.
+A high-fidelity, clickable recreation of the **Lavish Editor chrome** that the `lavish-axi` CLI launches in a browser, except for server-backed flows called out below.
+Every styling value (colors, radii, shadows, spacing, type) is pulled either directly from `src/chrome.css` and `src/artifact-sdk.js` in the [`kunchenguid/lavish-axi`](https://github.com/kunchenguid/lavish-axi) repo or from `colors_and_type.css` in the parent of this folder.
 
 Open `index.html` and try:
 
@@ -17,7 +18,7 @@ Everything is fake — there's no `lavish-axi` server backing it. The reply text
 
 - `index.html` — entry; pulls React, Babel, and every JSX file in order.
 - `app.jsx` — top-level `App` component. Holds chat / queued-prompts / annotation state.
-- `TopBar.jsx` — the 56px sticky bar (brand · file path · Annotation toggle · End Session).
+- `TopBar.jsx` — the 56px sticky bar (brand · file path · Annotation toggle · End Session); the product's HtmlShip Share control is intentionally omitted.
 - `Artifact.jsx` — the faux landing page rendered where the agent's HTML normally goes.
 - `AnnotationCard.jsx` — floating card that opens when an element is clicked.
 - `ChatPanel.jsx` — side panel: heading + chat log + composer.
@@ -33,5 +34,6 @@ This is a **kit**, not a build of the product. Skipped:
 - The `EventSource` reload pipe, the `chokidar` watcher.
 - DOM snapshot serialization. `lavish.snapshot()` would produce something like the tree in `src/artifact-sdk.js`; we don't.
 - File-path identity, session store, long-polling.
+- HtmlShip sharing. The product top bar includes a Share button and dialog that publishes the current HTML file, but this static kit does not call the share API.
 
 Read `src/server.js`, `src/chrome-client.js`, `src/chrome.css`, and `src/artifact-sdk.js` in the lavish-axi repo for the canonical behaviour.
