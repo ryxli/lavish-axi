@@ -613,6 +613,44 @@ test("POST /api/:key/share publishes the artifact HTML through HtmlShip", async 
   }
 });
 
+test("POST /api/:key/share rejects cross-origin browser requests", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const artifact = path.join(dir, "artifact.html");
+  await writeFile(artifact, "<!doctype html><title>Artifact</title><h1>Private</h1>\n");
+
+  const requests = [];
+  const htmlShipApi = await startFakeHtmlShipApi(requests);
+  const previousApiUrl = process.env.HTMLSHIP_API_URL;
+  process.env.HTMLSHIP_API_URL = `http://127.0.0.1:${serverPort(htmlShipApi)}`;
+
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const sessionRes = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    const session = await sessionRes.json();
+
+    const shareRes = await fetch(`${base}/api/${session.key}/share`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://attacker.example" },
+      body: JSON.stringify({ title: "stolen" }),
+    });
+    const body = await shareRes.json();
+
+    assert.equal(shareRes.status, 403);
+    assert.deepEqual(body, { error: "cross-origin share request rejected" });
+    assert.equal(requests.length, 0);
+  } finally {
+    await server.close();
+    await closeServer(htmlShipApi);
+    restoreEnv("HTMLSHIP_API_URL", previousApiUrl);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("publishHtmlShipPage rejects successful HtmlShip responses without a URL", async () => {
   const requests = [];
   const htmlShipApi = await startFakeHtmlShipApi(requests, { slug: "share123", owner_key: "ws_secret" });

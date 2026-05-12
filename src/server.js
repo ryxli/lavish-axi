@@ -153,6 +153,10 @@ export async function serve({ port, stateFile, version = "" }) {
 
   app.post("/api/:key/share", async (req, res, next) => {
     try {
+      if (!isSameOriginRequest(req)) {
+        res.status(403).json({ error: "cross-origin share request rejected" });
+        return;
+      }
       const session = await store.findByKey(req.params.key);
       if (!session) {
         res.status(404).json({ error: "session not found" });
@@ -453,6 +457,24 @@ function parseJsonResponse(text) {
     return JSON.parse(text);
   } catch {
     return { detail: text };
+  }
+}
+
+function isSameOriginRequest(req) {
+  const expectedOrigin = `${req.protocol}://${req.get("host")}`;
+  const origin = req.get("origin");
+  if (origin) {
+    return normalizeOrigin(origin) === expectedOrigin;
+  }
+  const referer = req.get("referer");
+  return !referer || normalizeOrigin(referer) === expectedOrigin;
+}
+
+function normalizeOrigin(value) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
   }
 }
 
