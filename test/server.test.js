@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -271,6 +272,44 @@ test("chrome can copy the file path from the top bar", async () => {
   assert.match(js, /copyPathButton\.textContent = "Copy Path"/);
 });
 
+test("chrome exposes an HtmlShip share modal from the top bar", async () => {
+  const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
+  const css = await chromeCssSource();
+
+  assert.match(html, /id="share"/);
+  assert.match(html, />Share</);
+  assert.match(html, /id="shareDialog"/);
+  assert.match(html, /Powered by htmlship\.com/);
+  assert.match(html, /id="shareTitle"/);
+  assert.match(html, /id="sharePassword"/);
+  assert.match(html, /id="shareExpiresIn"/);
+  assert.match(html, /id="shareParentSlug"/);
+  assert.match(html, /id="shareSandboxMode"/);
+  assert.match(html, /<option value="strict">Strict<\/option>/);
+  assert.match(html, /<option value="relaxed" selected>Relaxed<\/option>/);
+  assert.match(html, /Publish Page/);
+  assert.match(html, /Lavish design assets are rewritten to public CDN links/);
+  assert.match(html, /The annotation SDK is not included/);
+  assert.match(css, /\.share-overlay/);
+  assert.match(css, /box-shadow:var\(--shadow-floating\)/);
+  assert.match(css, /\.share-card/);
+});
+
+test("chrome client posts share settings and renders the HtmlShip URL", async () => {
+  const js = await chromeClientSource();
+
+  assert.match(js, /const shareButton/);
+  assert.match(js, /async function publishShare/);
+  assert.match(js, /fetch\("\/api\/" \+ key \+ "\/share"/);
+  assert.match(js, /title: shareTitleInput\.value\.trim\(\)/);
+  assert.match(js, /password: sharePasswordInput\.value/);
+  assert.match(js, /expires_in: shareExpiresInInput\.value/);
+  assert.match(js, /parent_slug: shareParentSlugInput\.value\.trim\(\)/);
+  assert.match(js, /sandbox_mode: shareSandboxModeInput\.value/);
+  assert.match(js, /shareUrlInput\.value = data\.url/);
+  assert.match(js, /shareOwnerKeyInput\.value = data\.owner_key/);
+});
+
 test("chrome centers the top bar row while bottom-aligning the identity cluster", async () => {
   const css = await chromeCssSource();
 
@@ -504,6 +543,76 @@ test("/design serves local Tailwind and DaisyUI artifact assets", async () => {
   }
 });
 
+test("POST /api/:key/share publishes the artifact HTML through HtmlShip", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const artifact = path.join(dir, "artifact.html");
+  await writeFile(artifact, "<!doctype html><title>Artifact</title><h1>Ship me</h1>\n");
+
+  const requests = [];
+  const htmlShipApi = await startFakeHtmlShipApi(requests);
+  const previousApiUrl = process.env.HTMLSHIP_API_URL;
+  const previousApiKey = process.env.HTMLSHIP_API_KEY;
+  process.env.HTMLSHIP_API_URL = `http://127.0.0.1:${serverPort(htmlShipApi)}`;
+  process.env.HTMLSHIP_API_KEY = "test-token";
+
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const sessionRes = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    const session = await sessionRes.json();
+
+    const shareRes = await fetch(`${base}/api/${session.key}/share`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Review draft",
+        password: "demo-pass",
+        expires_in: "60",
+        parent_slug: "parent123",
+        sandbox_mode: "strict",
+      }),
+    });
+    const body = await shareRes.json();
+
+    assert.equal(shareRes.status, 200);
+    assert.deepEqual(body, {
+      url: "https://view.htmlship.com/share123",
+      slug: "share123",
+      owner_key: "ws_secret",
+      expires_at: "2026-05-12T13:00:00.000Z",
+      created_at: "2026-05-12T12:00:00.000Z",
+    });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].method, "POST");
+    assert.equal(requests[0].url, "/api/v1/pages");
+    assert.equal(requests[0].headers.authorization, "Bearer test-token");
+    assert.match(requests[0].body.html, /^<!doctype html><title>Artifact<\/title><h1>Ship me<\/h1>\n/);
+    assert.match(requests[0].body.html, /https:\/\/cdn\.jsdelivr\.net\/npm\/daisyui@5\.5\.19\/daisyui\.css/);
+    assert.match(
+      requests[0].body.html,
+      /https:\/\/cdn\.jsdelivr\.net\/npm\/@tailwindcss\/browser@4\.2\.4\/dist\/index\.global\.js/,
+    );
+    assert.match(requests[0].body.html, /https:\/\/cdn\.jsdelivr\.net\/npm\/daisyui@5\.5\.19\/themes\.css/);
+    assert.doesNotMatch(requests[0].body.html, /\/sdk\.js/);
+    assert.doesNotMatch(requests[0].body.html, /\/design\//);
+    assert.equal(requests[0].body.title, "Review draft");
+    assert.equal(requests[0].body.password, "demo-pass");
+    assert.equal(requests[0].body.expires_in, 60);
+    assert.equal(requests[0].body.parent_slug, "parent123");
+    assert.equal(requests[0].body.sandbox_mode, "strict");
+  } finally {
+    await server.close();
+    await closeServer(htmlShipApi);
+    restoreEnv("HTMLSHIP_API_URL", previousApiUrl);
+    restoreEnv("HTMLSHIP_API_KEY", previousApiKey);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("POST /shutdown stops the listener so the client can spawn a fresh server", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
@@ -530,3 +639,55 @@ test("ended session message renders centered in the main content area", async ()
   assert.doesNotMatch(js, /The agent polling loop can stop\./);
   assert.doesNotMatch(js, /<span class="file">Session ended\. The agent polling loop can stop\.<\/span>/);
 });
+
+async function startFakeHtmlShipApi(requests) {
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", () => {
+      requests.push({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: raw ? JSON.parse(raw) : null,
+      });
+      res.writeHead(201, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          url: "https://view.htmlship.com/share123",
+          slug: "share123",
+          owner_key: "ws_secret",
+          expires_at: "2026-05-12T13:00:00.000Z",
+          created_at: "2026-05-12T12:00:00.000Z",
+        }),
+      );
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  return server;
+}
+
+function serverPort(server) {
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("expected TCP server address");
+  }
+  return address.port;
+}
+
+async function closeServer(server) {
+  await new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}

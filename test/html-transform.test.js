@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { injectLavishSdk } from "../src/html-transform.js";
+import { injectLavishSdk, injectPublicDesignAssets } from "../src/html-transform.js";
 
 test("injects the Lavish SDK before the closing body tag", () => {
   const html = "<!doctype html><html><body><h1>Hi</h1></body></html>";
@@ -50,4 +50,23 @@ test("appends the Lavish SDK when the artifact has no body tag", () => {
 
   assert.match(result, /<h1>Hi<\/h1>\n<link rel="stylesheet" href="\/design\/daisyui\.css" data-lavish-design>/);
   assert.match(result, /<script src="\/sdk\.js\?key=abc123"><\/script>$/);
+});
+
+test("injects public design assets for shared HtmlShip pages without the Lavish SDK", () => {
+  const html = '<!doctype html><html><head><title>Hi</title></head><body><h1 class="btn">Hi</h1></body></html>';
+  const result = injectPublicDesignAssets(html);
+
+  assert.match(result, /https:\/\/cdn\.jsdelivr\.net\/npm\/daisyui@5\.5\.19\/daisyui\.css/);
+  assert.match(result, /https:\/\/cdn\.jsdelivr\.net\/npm\/@tailwindcss\/browser@4\.2\.4\/dist\/index\.global\.js/);
+  assert.match(result, /https:\/\/cdn\.jsdelivr\.net\/npm\/daisyui@5\.5\.19\/themes\.css/);
+  assert.match(result, /data-lavish-design>[\s\S]*<title>Hi<\/title>/);
+  assert.doesNotMatch(result, /\/design\//);
+  assert.doesNotMatch(result, /\/sdk\.js/);
+});
+
+test("public share design injection respects Lavish design opt out", () => {
+  const html = '<!doctype html><html><head><meta name="lavish-design" content="off"></head><body></body></html>';
+  const result = injectPublicDesignAssets(html);
+
+  assert.equal(result, html);
 });

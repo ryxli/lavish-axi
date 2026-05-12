@@ -6,11 +6,13 @@ import chokidar from "chokidar";
 import express from "express";
 
 import { createArtifactSdk } from "./artifact-sdk.js";
-import { injectLavishSdk } from "./html-transform.js";
+import { injectLavishSdk, injectPublicDesignAssets } from "./html-transform.js";
 import { canonicalFile, SessionStore, sessionKey } from "./session-store.js";
 
 const chromeClientUrl = new URL("./chrome-client.js", import.meta.url);
 const chromeCssUrl = new URL("./chrome.css", import.meta.url);
+const htmlShipDefaultApiUrl = "https://api.htmlship.com";
+const htmlShipTimeoutMs = 30000;
 const designAssetUrls = {
   "daisyui.css": {
     packaged: new URL("./design/daisyui.css", import.meta.url),
@@ -144,6 +146,21 @@ export async function serve({ port, stateFile, version = "" }) {
       }
       events.emit("agent-reply", req.params.key, text);
       res.json({ status: "sent" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/:key/share", async (req, res, next) => {
+    try {
+      const session = await store.findByKey(req.params.key);
+      if (!session) {
+        res.status(404).json({ error: "session not found" });
+        return;
+      }
+      const html = await createHtmlShipShareHtml(session.file);
+      const page = await publishHtmlShipPage(html, req.body || {});
+      res.json(page);
     } catch (error) {
       next(error);
     }
@@ -342,6 +359,98 @@ async function readDesignAsset(asset) {
   }
 }
 
+async function createHtmlShipShareHtml(file) {
+  return injectPublicDesignAssets(await readFile(file, "utf8"));
+}
+
+export async function publishHtmlShipPage(html, options = {}) {
+  const apiUrl = String(process.env.HTMLSHIP_API_URL || htmlShipDefaultApiUrl).replace(/\/+$/, "");
+  const headers = {
+    "content-type": "application/json",
+    "user-agent": "lavish-axi/htmlship-share",
+  };
+  if (process.env.HTMLSHIP_API_KEY) {
+    headers.authorization = `Bearer ${process.env.HTMLSHIP_API_KEY}`;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), htmlShipTimeoutMs);
+  let response;
+  try {
+    response = await fetch(`${apiUrl}/api/v1/pages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(createHtmlShipPayload(html, options)),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("HtmlShip publish timed out", { cause: error });
+    }
+    throw new Error(`HtmlShip publish failed: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await response.text();
+  const data = text ? parseJsonResponse(text) : {};
+  if (!response.ok) {
+    const detail = data.detail || data.error || text || `HTTP ${response.status}`;
+    throw new Error(`HtmlShip publish failed: ${detail}`);
+  }
+
+  return {
+    url: String(data.url || ""),
+    slug: String(data.slug || ""),
+    owner_key: String(data.owner_key || ""),
+    expires_at: data.expires_at || null,
+    created_at: data.created_at || null,
+  };
+}
+
+export function createHtmlShipPayload(html, options = {}) {
+  const body = {
+    html: String(html || ""),
+    sandbox_mode: optionalString(options.sandbox_mode || options.sandboxMode) || "strict",
+  };
+  const title = optionalString(options.title);
+  const password = optionalString(options.password);
+  const parentSlug = optionalString(options.parent_slug || options.parentSlug);
+  const expiresIn = normalizeExpiresIn(options.expires_in ?? options.expiresIn);
+
+  if (title) body.title = title;
+  if (password) body.password = password;
+  if (parentSlug) body.parent_slug = parentSlug;
+  if (expiresIn !== null) body.expires_in = expiresIn;
+
+  return body;
+}
+
+function optionalString(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeExpiresIn(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1 || number > 10080) {
+    throw new Error("expires_in must be an integer from 1 to 10080 minutes");
+  }
+  return number;
+}
+
+function parseJsonResponse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { detail: text };
+  }
+}
+
 export function resolveArtifactAsset(root, assetPath) {
   const file = path.resolve(root, assetPath);
   const relative = path.relative(root, file);
@@ -384,6 +493,7 @@ function setPollActive(key, activePolls, events, active) {
 
 export function createChromeHtml(session) {
   const fileInputSize = Math.max(1, session.file.length);
+  const defaultShareTitle = path.basename(session.file);
   const sessionJson = jsonScript({ key: session.key, initialChat: session.chat || [] });
   return `<!doctype html>
 <html>
@@ -394,7 +504,8 @@ export function createChromeHtml(session) {
 <link rel="stylesheet" href="/chrome.css">
 </head>
 <body class="lavish">
-<div class="bar"><div class="brand"><span class="brand-mark">Lavish</span><span class="brand-support">Editor</span></div><div class="divider" aria-hidden="true"></div><div class="file-wrap" title="${escapeHtml(session.file)}"><input class="file-input" id="filePath" readonly size="${fileInputSize}" value="${escapeHtml(session.file)}"><button class="copy-button" id="copyPath" type="button">Copy Path</button></div><button class="button secondary annotation-on" id="annotation">Annotation: On</button><button class="button danger" id="end">End Session</button></div>
+<div class="bar"><div class="brand"><span class="brand-mark">Lavish</span><span class="brand-support">Editor</span></div><div class="divider" aria-hidden="true"></div><div class="file-wrap" title="${escapeHtml(session.file)}"><input class="file-input" id="filePath" readonly size="${fileInputSize}" value="${escapeHtml(session.file)}"><button class="copy-button" id="copyPath" type="button">Copy Path</button></div><button class="button secondary" id="share" type="button">Share</button><button class="button secondary annotation-on" id="annotation">Annotation: On</button><button class="button danger" id="end">End Session</button></div>
+<div class="share-overlay" id="shareDialog" role="dialog" aria-modal="true" aria-labelledby="shareTitleText" hidden><form class="share-card" id="shareForm"><div class="share-head"><div><div class="share-kicker">Powered by htmlship.com</div><h2 id="shareTitleText">Publish a share URL</h2></div><button class="share-close" id="shareClose" type="button" aria-label="Close share dialog">×</button></div><p class="share-copy">This sends the current HTML file to HtmlShip and serves a copy from view.htmlship.com. Password-protect anything that should not be public.</p><p class="share-note">Lavish design assets are rewritten to public CDN links. The annotation SDK is not included. Local sibling assets may not resolve on the shared page.</p><div class="share-grid"><label>Title<input id="shareTitle" name="title" type="text" value="${escapeHtml(defaultShareTitle)}" autocomplete="off"></label><label>Password<input id="sharePassword" name="password" type="password" autocomplete="new-password" placeholder="Optional view password"></label><label>Expires in minutes<input id="shareExpiresIn" name="expires_in" type="number" min="1" max="10080" step="1" placeholder="Optional, max 10080"></label><label>Parent slug<input id="shareParentSlug" name="parent_slug" type="text" autocomplete="off" placeholder="Optional version parent"></label><label>Sandbox mode<select id="shareSandboxMode" name="sandbox_mode"><option value="strict">Strict</option><option value="relaxed" selected>Relaxed</option></select></label></div><div class="share-status" id="shareStatus" role="status"></div><div class="share-result" id="shareResult" hidden><label>Share URL<div class="share-copy-row"><input id="shareUrl" readonly><button class="copy-button" id="copyShareUrl" type="button">Copy URL</button></div></label><label>Owner key<div class="share-copy-row"><input id="shareOwnerKey" readonly><button class="copy-button" id="copyOwnerKey" type="button">Copy Key</button></div></label><p class="share-note">Keep the owner key private. HtmlShip returns it once, and it can update or delete this page.</p></div><div class="share-actions"><button class="button secondary" id="shareCancel" type="button">Cancel</button><button class="button" id="sharePublish" type="submit">Publish Page</button></div></form></div>
 <div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-downloads" src="/artifact/${session.key}/index.html"></iframe></div><aside class="panel"><h2>Conversation</h2><div class="chat" id="chatLog"></div><div class="composer"><div class="annotation-pills" id="annotationPills"></div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="actions"><button class="button" id="send">Send to Agent</button></div></div></aside></div>
 <script id="lavish-session" type="application/json">${sessionJson}</script>
 <script src="/chrome-client.js"></script>

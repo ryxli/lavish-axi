@@ -14,6 +14,23 @@ const annotationButton = /** @type {HTMLButtonElement} */ (document.getElementBy
 const endButton = /** @type {HTMLButtonElement} */ (document.getElementById("end"));
 const filePathInput = /** @type {HTMLInputElement} */ (document.getElementById("filePath"));
 const copyPathButton = /** @type {HTMLButtonElement} */ (document.getElementById("copyPath"));
+const shareButton = /** @type {HTMLButtonElement} */ (document.getElementById("share"));
+const shareDialog = /** @type {HTMLDivElement} */ (document.getElementById("shareDialog"));
+const shareForm = /** @type {HTMLFormElement} */ (document.getElementById("shareForm"));
+const shareCloseButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareClose"));
+const shareCancelButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareCancel"));
+const sharePublishButton = /** @type {HTMLButtonElement} */ (document.getElementById("sharePublish"));
+const shareTitleInput = /** @type {HTMLInputElement} */ (document.getElementById("shareTitle"));
+const sharePasswordInput = /** @type {HTMLInputElement} */ (document.getElementById("sharePassword"));
+const shareExpiresInInput = /** @type {HTMLInputElement} */ (document.getElementById("shareExpiresIn"));
+const shareParentSlugInput = /** @type {HTMLInputElement} */ (document.getElementById("shareParentSlug"));
+const shareSandboxModeInput = /** @type {HTMLSelectElement} */ (document.getElementById("shareSandboxMode"));
+const shareStatus = /** @type {HTMLDivElement} */ (document.getElementById("shareStatus"));
+const shareResult = /** @type {HTMLDivElement} */ (document.getElementById("shareResult"));
+const shareUrlInput = /** @type {HTMLInputElement} */ (document.getElementById("shareUrl"));
+const shareOwnerKeyInput = /** @type {HTMLInputElement} */ (document.getElementById("shareOwnerKey"));
+const copyShareUrlButton = /** @type {HTMLButtonElement} */ (document.getElementById("copyShareUrl"));
+const copyOwnerKeyButton = /** @type {HTMLButtonElement} */ (document.getElementById("copyOwnerKey"));
 
 const queued = [];
 let annotation = true;
@@ -156,6 +173,74 @@ async function copyFilePath() {
   }, 1200);
 }
 
+function openShareDialog() {
+  shareDialog.hidden = false;
+  shareStatus.textContent = "";
+  shareStatus.classList.remove("error");
+  shareTitleInput.focus();
+}
+
+function closeShareDialog() {
+  shareDialog.hidden = true;
+}
+
+async function copyText(value, button, label) {
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    const input = document.createElement("textarea");
+    input.value = value;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+  }
+  button.textContent = "Copied";
+  setTimeout(() => {
+    button.textContent = label;
+  }, 1200);
+}
+
+async function publishShare(event) {
+  event.preventDefault();
+  sharePublishButton.disabled = true;
+  shareStatus.classList.remove("error");
+  shareStatus.textContent = "Publishing with HtmlShip...";
+  shareResult.hidden = true;
+
+  try {
+    const response = await fetch("/api/" + key + "/share", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: shareTitleInput.value.trim(),
+        password: sharePasswordInput.value,
+        expires_in: shareExpiresInInput.value,
+        parent_slug: shareParentSlugInput.value.trim(),
+        sandbox_mode: shareSandboxModeInput.value,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "HtmlShip publish failed");
+    }
+
+    shareUrlInput.value = data.url || "";
+    shareOwnerKeyInput.value = data.owner_key || "";
+    shareStatus.textContent = data.expires_at
+      ? "Published. This page expires at " + data.expires_at + "."
+      : "Published. Keep the owner key private.";
+    shareResult.hidden = false;
+    shareUrlInput.focus();
+    shareUrlInput.select();
+  } catch (error) {
+    shareStatus.classList.add("error");
+    shareStatus.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    sharePublishButton.disabled = false;
+  }
+}
+
 async function reloadAfterServerRestart() {
   let sawOutage = false;
   const deadline = Date.now() + 5000;
@@ -202,6 +287,18 @@ annotationButton.onclick = () => {
 
 sendButton.onclick = sendQueued;
 copyPathButton.onclick = copyFilePath;
+shareButton.onclick = openShareDialog;
+shareCloseButton.onclick = closeShareDialog;
+shareCancelButton.onclick = closeShareDialog;
+shareForm.addEventListener("submit", publishShare);
+shareDialog.addEventListener("click", (event) => {
+  if (event.target === shareDialog) closeShareDialog();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !shareDialog.hidden) closeShareDialog();
+});
+copyShareUrlButton.onclick = () => copyText(shareUrlInput.value, copyShareUrlButton, "Copy URL");
+copyOwnerKeyButton.onclick = () => copyText(shareOwnerKeyInput.value, copyOwnerKeyButton, "Copy Key");
 endButton.onclick = endSession;
 frame.addEventListener("load", () => postToFrame({ type: "lavish:setAnnotationMode", enabled: annotation }));
 
