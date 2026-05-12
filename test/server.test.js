@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createChromeHtml, createSdkJs, resolveArtifactAsset, serve } from "../src/server.js";
+import { createChromeHtml, createSdkJs, publishHtmlShipPage, resolveArtifactAsset, serve } from "../src/server.js";
 
 async function chromeClientSource() {
   return readFile(new URL("../src/chrome-client.js", import.meta.url), "utf8");
@@ -613,6 +613,24 @@ test("POST /api/:key/share publishes the artifact HTML through HtmlShip", async 
   }
 });
 
+test("publishHtmlShipPage rejects successful HtmlShip responses without a URL", async () => {
+  const requests = [];
+  const htmlShipApi = await startFakeHtmlShipApi(requests, { slug: "share123", owner_key: "ws_secret" });
+  const previousApiUrl = process.env.HTMLSHIP_API_URL;
+  process.env.HTMLSHIP_API_URL = `http://127.0.0.1:${serverPort(htmlShipApi)}`;
+
+  try {
+    await assert.rejects(
+      () => publishHtmlShipPage("<!doctype html><title>Artifact</title>"),
+      /HtmlShip publish failed: missing url/,
+    );
+    assert.equal(requests.length, 1);
+  } finally {
+    await closeServer(htmlShipApi);
+    restoreEnv("HTMLSHIP_API_URL", previousApiUrl);
+  }
+});
+
 test("POST /shutdown stops the listener so the client can spawn a fresh server", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
@@ -640,7 +658,14 @@ test("ended session message renders centered in the main content area", async ()
   assert.doesNotMatch(js, /<span class="file">Session ended\. The agent polling loop can stop\.<\/span>/);
 });
 
-async function startFakeHtmlShipApi(requests) {
+async function startFakeHtmlShipApi(requests, responseBody = null) {
+  const htmlShipResponse = responseBody ?? {
+    url: "https://view.htmlship.com/share123",
+    slug: "share123",
+    owner_key: "ws_secret",
+    expires_at: "2026-05-12T13:00:00.000Z",
+    created_at: "2026-05-12T12:00:00.000Z",
+  };
   const server = createServer((req, res) => {
     let raw = "";
     req.setEncoding("utf8");
@@ -655,15 +680,7 @@ async function startFakeHtmlShipApi(requests) {
         body: raw ? JSON.parse(raw) : null,
       });
       res.writeHead(201, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          url: "https://view.htmlship.com/share123",
-          slug: "share123",
-          owner_key: "ws_secret",
-          expires_at: "2026-05-12T13:00:00.000Z",
-          created_at: "2026-05-12T12:00:00.000Z",
-        }),
-      );
+      res.end(JSON.stringify(htmlShipResponse));
     });
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));

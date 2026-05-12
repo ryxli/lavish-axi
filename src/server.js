@@ -401,8 +401,13 @@ export async function publishHtmlShipPage(html, options = {}) {
     throw new Error(`HtmlShip publish failed: ${detail}`);
   }
 
+  const url = optionalString(data.url);
+  if (!url) {
+    throw new Error("HtmlShip publish failed: missing url");
+  }
+
   return {
-    url: String(data.url || ""),
+    url,
     slug: String(data.slug || ""),
     owner_key: String(data.owner_key || ""),
     expires_at: data.expires_at || null,
