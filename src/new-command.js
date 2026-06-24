@@ -9,8 +9,13 @@ import { AxiError } from "axi-sdk-js";
 // "scaffold from a personalized template" the path of least resistance.
 export const DEFAULT_TEMPLATE = "firstmate";
 
+// Templates are resolved from the bundled dist/templates/ at runtime (composed
+// from src/templates/base.html + sections + concepts at build time). Set
+// LAVISH_AXI_TEMPLATES_DIR to point at a custom template library instead.
 function templatesDir() {
-  return fileURLToPath(new URL("./templates/", import.meta.url));
+  return process.env.LAVISH_AXI_TEMPLATES_DIR
+    ? path.resolve(process.env.LAVISH_AXI_TEMPLATES_DIR)
+    : fileURLToPath(new URL("./templates/", import.meta.url));
 }
 
 export function listKnownTemplates() {

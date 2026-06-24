@@ -16,6 +16,10 @@ import {
   resolveTemplatePath,
 } from "../src/new-command.js";
 
+// new-command resolves templates from LAVISH_AXI_TEMPLATES_DIR when set; point it
+// at the composed dist/templates so these tests validate the real built output.
+process.env.LAVISH_AXI_TEMPLATES_DIR = fileURLToPath(new URL("../dist/templates/", import.meta.url));
+
 test("createNewOutput returns file, template, and next_step", () => {
   const output = createNewOutput({ file: ".lavish/firstmate.html", template: "firstmate" });
   assert.equal(output.file, ".lavish/firstmate.html");
@@ -230,7 +234,7 @@ test("newCommand throws VALIDATION_ERROR for unknown template", async () => {
 });
 
 test("firstmate template has inline CSS with no external links", async () => {
-  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  const content = await readFile(fileURLToPath(new URL("../dist/templates/firstmate.html", import.meta.url)), "utf8");
   assert.doesNotMatch(content, /https?:\/\/cdn\./i, "no CDN links");
   assert.doesNotMatch(content, /<link rel="stylesheet"/i, "no external stylesheets");
   assert.doesNotMatch(content, /<script src="https?:/i, "no external scripts");
@@ -238,7 +242,7 @@ test("firstmate template has inline CSS with no external links", async () => {
 });
 
 test("firstmate template has all required components", async () => {
-  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  const content = await readFile(fileURLToPath(new URL("../dist/templates/firstmate.html", import.meta.url)), "utf8");
   assert.match(content, /class="hero"/, "hero block");
   assert.match(content, /class="verdict/, "verdict bar");
   assert.match(content, /class="card"/, "card component");
@@ -251,13 +255,13 @@ test("firstmate template has all required components", async () => {
 });
 
 test("firstmate template has overflow guards on body", async () => {
-  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  const content = await readFile(fileURLToPath(new URL("../dist/templates/firstmate.html", import.meta.url)), "utf8");
   assert.match(content, /overflow-x: hidden/, "body overflow guard");
   assert.match(content, /overflow-x: auto/, "table overflow guard");
 });
 
 test("firstmate template has the cheatsheet comment", async () => {
-  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  const content = await readFile(fileURLToPath(new URL("../dist/templates/firstmate.html", import.meta.url)), "utf8");
   assert.match(content, /FIRSTMATE NAVAL TEMPLATE/, "cheatsheet header");
   assert.match(content, /COLOR TOKENS/, "color reference");
   assert.match(content, /LAVISH INTERACTION PATTERNS/, "interaction patterns");
@@ -265,7 +269,7 @@ test("firstmate template has the cheatsheet comment", async () => {
 });
 
 test("firstmate template submitDecision only shows confirmation when window.lavish exists", async () => {
-  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  const content = await readFile(fileURLToPath(new URL("../dist/templates/firstmate.html", import.meta.url)), "utf8");
   // The disable and sent-msg reveal must be inside the if (window.lavish) block,
   // not before it. Check that the disabled assignment follows the lavish check.
   const lavishCheckIndex = content.indexOf("if (window.lavish)");
@@ -276,6 +280,6 @@ test("firstmate template submitDecision only shows confirmation when window.lavi
 });
 
 test("firstmate template has no em dashes", async () => {
-  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  const content = await readFile(fileURLToPath(new URL("../dist/templates/firstmate.html", import.meta.url)), "utf8");
   assert.doesNotMatch(content, /—/, "no em dashes (\\u2014)");
 });
