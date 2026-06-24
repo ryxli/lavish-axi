@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,7 @@ import {
   createNewOutput,
   listKnownTemplates,
   newCommand,
-  resolveNewOutputPath,
+  parseNewArgs,
   resolveTemplatePath,
 } from "../src/new-command.js";
 
@@ -24,24 +24,41 @@ test("createNewOutput returns file, template, and next_step", () => {
   assert.match(output.next_step, /lavish-axi .lavish\/firstmate\.html/);
 });
 
-test("resolveNewOutputPath defaults to .lavish/<template>.html", () => {
-  const result = resolveNewOutputPath(["--template", "firstmate"], "firstmate");
-  assert.equal(result, path.join(".lavish", "firstmate.html"));
+test("parseNewArgs extracts template and default output path", () => {
+  const result = parseNewArgs(["--template", "firstmate"]);
+  assert.equal(result.template, "firstmate");
+  assert.equal(result.outputPath, null);
 });
 
-test("resolveNewOutputPath respects explicit output path", () => {
-  const result = resolveNewOutputPath(["--template", "firstmate", "my-output.html"], "firstmate");
-  assert.equal(result, "my-output.html");
+test("parseNewArgs handles --template=value equals form", () => {
+  const result = parseNewArgs(["--template=firstmate"]);
+  assert.equal(result.template, "firstmate");
+  assert.equal(result.outputPath, null);
 });
 
-test("resolveNewOutputPath ignores flag-like args", () => {
-  const result = resolveNewOutputPath(["--template", "firstmate", "--no-open"], "firstmate");
-  assert.equal(result, path.join(".lavish", "firstmate.html"));
+test("parseNewArgs extracts explicit output path", () => {
+  const result = parseNewArgs(["--template", "firstmate", "my-output.html"]);
+  assert.equal(result.template, "firstmate");
+  assert.equal(result.outputPath, "my-output.html");
 });
 
-test("resolveNewOutputPath picks positional arg that precedes template flag", () => {
-  const result = resolveNewOutputPath(["out.html", "--template", "firstmate"], "firstmate");
-  assert.equal(result, "out.html");
+test("parseNewArgs throws on unrecognized flags so their values cannot become the output path", () => {
+  assert.throws(
+    () => parseNewArgs(["--template", "firstmate", "--port", "4387"]),
+    (err) => {
+      assert.ok(err instanceof AxiError);
+      assert.equal(err.code, "VALIDATION_ERROR");
+      assert.match(err.message, /Unknown flag/);
+      assert.match(err.message, /--port/);
+      return true;
+    },
+  );
+});
+
+test("parseNewArgs picks positional arg before --template flag", () => {
+  const result = parseNewArgs(["out.html", "--template", "firstmate"]);
+  assert.equal(result.template, "firstmate");
+  assert.equal(result.outputPath, "out.html");
 });
 
 test("resolveTemplatePath resolves to the templates directory", () => {
@@ -71,6 +88,20 @@ test("newCommand writes the template file to default path", async () => {
     assert.match(written, /window\.lavish/);
     assert.match(written, /--c-ground/);
     assert.match(written, /overflow-x: hidden/);
+  } finally {
+    process.chdir(origCwd);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("newCommand accepts --template=value equals form", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-new-test-"));
+  const origCwd = process.cwd();
+  try {
+    process.chdir(dir);
+    const output = await newCommand(["--template=firstmate"]);
+    assert.equal(output.template, "firstmate");
+    assert.ok(existsSync(path.join(dir, ".lavish", "firstmate.html")));
   } finally {
     process.chdir(origCwd);
     await rm(dir, { recursive: true, force: true });
@@ -107,6 +138,52 @@ test("newCommand creates the .lavish directory if it does not exist", async () =
   }
 });
 
+test("newCommand refuses to overwrite an existing output file", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-new-test-"));
+  const origCwd = process.cwd();
+  try {
+    process.chdir(dir);
+    await newCommand(["--template", "firstmate"]);
+    await assert.rejects(
+      () => newCommand(["--template", "firstmate"]),
+      (err) => {
+        assert.ok(err instanceof AxiError);
+        assert.equal(err.code, "VALIDATION_ERROR");
+        assert.match(err.message, /already exists/);
+        return true;
+      },
+    );
+  } finally {
+    process.chdir(origCwd);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("newCommand refuses to overwrite a user-edited output file", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-new-test-"));
+  const origCwd = process.cwd();
+  try {
+    process.chdir(dir);
+    await newCommand(["--template", "firstmate"]);
+    // Simulate user editing the file
+    await writeFile(path.join(dir, ".lavish", "firstmate.html"), "<html>edited</html>");
+    await assert.rejects(
+      () => newCommand(["--template", "firstmate"]),
+      (err) => {
+        assert.ok(err instanceof AxiError);
+        assert.match(err.message, /already exists/);
+        return true;
+      },
+    );
+    // Confirm user edits are intact
+    const content = await readFile(path.join(dir, ".lavish", "firstmate.html"), "utf8");
+    assert.equal(content, "<html>edited</html>");
+  } finally {
+    process.chdir(origCwd);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("newCommand throws VALIDATION_ERROR when --template is missing", async () => {
   await assert.rejects(
     () => newCommand([]),
@@ -133,8 +210,7 @@ test("newCommand throws VALIDATION_ERROR for unknown template", async () => {
 });
 
 test("firstmate template has inline CSS with no external links", async () => {
-  const templatePath = fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url));
-  const content = await readFile(templatePath, "utf8");
+  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
   assert.doesNotMatch(content, /https?:\/\/cdn\./i, "no CDN links");
   assert.doesNotMatch(content, /<link rel="stylesheet"/i, "no external stylesheets");
   assert.doesNotMatch(content, /<script src="https?:/i, "no external scripts");
@@ -142,8 +218,7 @@ test("firstmate template has inline CSS with no external links", async () => {
 });
 
 test("firstmate template has all required components", async () => {
-  const templatePath = fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url));
-  const content = await readFile(templatePath, "utf8");
+  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
   assert.match(content, /class="hero"/, "hero block");
   assert.match(content, /class="verdict/, "verdict bar");
   assert.match(content, /class="card"/, "card component");
@@ -156,17 +231,31 @@ test("firstmate template has all required components", async () => {
 });
 
 test("firstmate template has overflow guards on body", async () => {
-  const templatePath = fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url));
-  const content = await readFile(templatePath, "utf8");
+  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
   assert.match(content, /overflow-x: hidden/, "body overflow guard");
   assert.match(content, /overflow-x: auto/, "table overflow guard");
 });
 
 test("firstmate template has the cheatsheet comment", async () => {
-  const templatePath = fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url));
-  const content = await readFile(templatePath, "utf8");
+  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
   assert.match(content, /FIRSTMATE NAVAL TEMPLATE/, "cheatsheet header");
   assert.match(content, /COLOR TOKENS/, "color reference");
   assert.match(content, /LAVISH INTERACTION PATTERNS/, "interaction patterns");
   assert.match(content, /queueKey/, "queueKey dedup pattern");
+});
+
+test("firstmate template submitDecision only shows confirmation when window.lavish exists", async () => {
+  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  // The disable and sent-msg reveal must be inside the if (window.lavish) block,
+  // not before it. Check that the disabled assignment follows the lavish check.
+  const lavishCheckIndex = content.indexOf("if (window.lavish)");
+  const disableIndex = content.indexOf('getElementById("submit-decision").disabled = true');
+  assert.ok(lavishCheckIndex !== -1, "has window.lavish guard");
+  assert.ok(disableIndex !== -1, "has button disable");
+  assert.ok(disableIndex > lavishCheckIndex, "button disable is inside the window.lavish guard");
+});
+
+test("firstmate template has no em dashes", async () => {
+  const content = await readFile(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url)), "utf8");
+  assert.doesNotMatch(content, /—/, "no em dashes (\\u2014)");
 });

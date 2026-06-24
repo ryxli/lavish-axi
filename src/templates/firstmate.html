@@ -509,7 +509,7 @@
 
         <div style="margin-top: 20px">
           <button class="btn btn-primary" id="submit-decision" onclick="submitDecision()">Submit decision</button>
-          <p class="sent-msg" id="sent-msg">✓ Sent — waiting for the agent to respond.</p>
+          <p class="sent-msg" id="sent-msg">✓ Sent - waiting for the agent to respond.</p>
         </div>
       </div>
 
@@ -520,14 +520,14 @@
         <button
           class="btn btn-primary"
           data-lavish-action
-          onclick="window.lavish?.queuePrompt('Approved — proceed with the recommended approach.')"
+          onclick="window.lavish?.queuePrompt('Approved - proceed with the recommended approach.')"
         >
           Approve &amp; Continue
         </button>
         <button
           class="btn btn-ghost"
           data-lavish-action
-          onclick="window.lavish?.queuePrompt('Hold — I need to review this further before deciding.')"
+          onclick="window.lavish?.queuePrompt('Hold - I need to review this further before deciding.')"
         >
           Hold for Review
         </button>
@@ -545,12 +545,13 @@
         const label = selected.closest(".radio-option").querySelector(".option-title").textContent.trim();
         const prompt = `Decision: ${label} (value: ${selected.value})`;
 
-        document.getElementById("submit-decision").disabled = true;
-        document.getElementById("sent-msg").style.display = "block";
-
         if (window.lavish) {
+          document.getElementById("submit-decision").disabled = true;
+          document.getElementById("sent-msg").style.display = "block";
           window.lavish.queuePrompt(prompt);
           window.lavish.sendQueuedPrompts();
+        } else {
+          alert("Decision: " + label + "\n\nOpen this file via lavish-axi to send it to the agent.");
         }
       }
     </script>
@@ -559,7 +560,7 @@
 
 <!--
 ╔══════════════════════════════════════════════════════════════╗
-║         FIRSTMATE NAVAL TEMPLATE — QUICK REFERENCE          ║
+║         FIRSTMATE NAVAL TEMPLATE - QUICK REFERENCE          ║
 ╚══════════════════════════════════════════════════════════════╝
 
 COLOR TOKENS (CSS custom properties):
@@ -573,15 +574,15 @@ COLOR TOKENS (CSS custom properties):
   --c-dim:      #4A6A80   placeholder / disabled
 
 VERDICT BAR variants:
-  <div class="verdict">          — neutral/blue accent (default)
-  <div class="verdict success">  — green  (#34d399) for good news
-  <div class="verdict warning">  — yellow (#fbbf24) for caution
-  <div class="verdict danger">   — red    (#f87171) for blocking issues
+  <div class="verdict">          - neutral/blue accent (default)
+  <div class="verdict success">  - green  (#34d399) for good news
+  <div class="verdict warning">  - yellow (#fbbf24) for caution
+  <div class="verdict danger">   - red    (#f87171) for blocking issues
 
 BUTTON variants:
-  <button class="btn btn-primary">Action</button>     — filled blue
-  <button class="btn btn-ghost">Secondary</button>    — bordered ghost
-  <button class="btn btn-sm btn-primary">Sm</button>  — small filled
+  <button class="btn btn-primary">Action</button>     - filled blue
+  <button class="btn btn-ghost">Secondary</button>    - bordered ghost
+  <button class="btn btn-sm btn-primary">Sm</button>  - small filled
   (add :disabled or JS .disabled = true to grey it out)
 
 CARD with lavish annotation button:
@@ -599,10 +600,10 @@ CARD with lavish annotation button:
   </div>
 
 TABLE status cells:
-  <td class="td-label">Name</td>   — bright white  (row label)
-  <td class="td-good">Low</td>     — green  (#34d399)
-  <td class="td-warn">Medium</td>  — yellow (#fbbf24)
-  <td class="td-bad">High</td>     — red    (#f87171)
+  <td class="td-label">Name</td>   - bright white  (row label)
+  <td class="td-good">Low</td>     - green  (#34d399)
+  <td class="td-warn">Medium</td>  - yellow (#fbbf24)
+  <td class="td-bad">High</td>     - red    (#f87171)
 
 LAVISH INTERACTION PATTERNS:
 
@@ -633,7 +634,7 @@ NOTES:
     functional when opened directly without lavish-axi running.
   - Native controls (button, input, select, textarea, label, summary,
     editable regions) and their descendants are excluded from
-    annotation mode automatically — no data-lavish-action needed.
+    annotation mode automatically - no data-lavish-action needed.
   - Use data-lavish-action only on custom non-native controls.
-  - All CSS is inline — no CDN, compatible with claude.ai Artifact CSP.
+  - All CSS is inline - no CDN, compatible with claude.ai Artifact CSP.
 -->
