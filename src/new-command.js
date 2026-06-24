@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 
 import { AxiError } from "axi-sdk-js";
 
+// The default template when `new` is run without --template. This makes
+// "scaffold from a personalized template" the path of least resistance.
+export const DEFAULT_TEMPLATE = "firstmate";
+
 function templatesDir() {
   return fileURLToPath(new URL("./templates/", import.meta.url));
 }
@@ -53,38 +57,31 @@ export function createNewOutput({ file, template }) {
 }
 
 export async function newCommand(args) {
-  const { template, outputPath: explicitOutput } = parseNewArgs(args);
+  const { template: requestedTemplate, outputPath: explicitOutput } = parseNewArgs(args);
   const available = listKnownTemplates();
+  const template = requestedTemplate ?? DEFAULT_TEMPLATE;
 
-  if (!template) {
-    throw new AxiError("--template is required", "VALIDATION_ERROR", [
-      `Run \`lavish-axi new --template <name> [output-path]\``,
-      available.length > 0
-        ? `Available templates: ${available.join(", ")}`
-        : "No templates found - run `node scripts/build.js` first",
+  if (available.length === 0) {
+    throw new AxiError("No templates found", "VALIDATION_ERROR", [
+      "This usually means the package was not built correctly",
+      "Run `node scripts/build.js` and try again",
     ]);
   }
 
   if (!available.includes(template)) {
-    throw new AxiError(
-      `Unknown template: ${template}`,
-      "VALIDATION_ERROR",
-      available.length > 0
-        ? [`Available templates: ${available.join(", ")}`]
-        : [
-            "No templates found - this usually means the package was not built correctly",
-            "Run `node scripts/build.js` and try again",
-          ],
-    );
+    throw new AxiError(`Unknown template: ${template}`, "VALIDATION_ERROR", [
+      `Available templates: ${available.join(", ")}`,
+    ]);
   }
 
   const outputPath = explicitOutput ?? path.join(".lavish", `${template}.html`);
 
   try {
     await access(outputPath);
+    const recoveryFlag = template === DEFAULT_TEMPLATE ? "" : ` --template ${template}`;
     throw new AxiError(`Output file already exists: ${outputPath}`, "VALIDATION_ERROR", [
       "Delete or rename the existing file first, or pass a different output path",
-      `Run \`lavish-axi new --template ${template} <new-path>\` to write to a different location`,
+      `Run \`lavish-axi new${recoveryFlag} <new-path>\` to write to a different location`,
     ]);
   } catch (err) {
     if (err instanceof AxiError) throw err;

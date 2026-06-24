@@ -184,16 +184,36 @@ test("newCommand refuses to overwrite a user-edited output file", async () => {
   }
 });
 
-test("newCommand throws VALIDATION_ERROR when --template is missing", async () => {
-  await assert.rejects(
-    () => newCommand([]),
-    (err) => {
-      assert.ok(err instanceof AxiError);
-      assert.equal(err.code, "VALIDATION_ERROR");
-      assert.match(err.message, /--template is required/);
-      return true;
-    },
-  );
+test("newCommand defaults to the firstmate template when --template is omitted", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-new-test-"));
+  const origCwd = process.cwd();
+  try {
+    process.chdir(dir);
+    const output = await newCommand([]);
+    assert.equal(output.template, "firstmate");
+    assert.equal(output.file, path.join(".lavish", "firstmate.html"));
+    const written = await readFile(path.join(dir, ".lavish", "firstmate.html"), "utf8");
+    assert.match(written, /<!doctype html>/i);
+    assert.match(written, /Naval color system/);
+  } finally {
+    process.chdir(origCwd);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("newCommand defaults the template for a positional-only output path", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-new-test-"));
+  const origCwd = process.cwd();
+  try {
+    process.chdir(dir);
+    const output = await newCommand(["review.html"]);
+    assert.equal(output.template, "firstmate");
+    assert.equal(output.file, "review.html");
+    assert.ok(existsSync(path.join(dir, "review.html")));
+  } finally {
+    process.chdir(origCwd);
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("newCommand throws VALIDATION_ERROR for unknown template", async () => {

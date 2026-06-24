@@ -61,7 +61,7 @@ ${home.help[home.help.length - 1]}
 
 ## Workflow
 
-1. Create the HTML artifact (default location \`.lavish/<name>.html\` in the working directory).
+1. Start from a template instead of hand-writing boilerplate: \`npx -y lavish-axi new [--template <name>] [output-path]\` writes a ready artifact to \`.lavish/<name>.html\` (default template \`firstmate\`: self-contained naval theme, overflow guards, and all window.lavish interaction JS already baked in). Replace the placeholder content in \`<main>\` and skip re-deriving theme/CSS/JS. Only hand-author from scratch when the user wants a custom design the templates do not cover.
 2. Run \`npx -y lavish-axi <html-file>\` to open or resume a review session in the browser.
 3. Run \`npx -y lavish-axi poll <html-file>\` to long-poll for the user's annotations, queued prompts, and browser-reported \`layout_warnings\`.
    The poll stays silent until the user acts or the real browser reports fresh layout warnings - leave it running, never kill it.
