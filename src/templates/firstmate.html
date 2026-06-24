@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><!-- TITLE: replace me --></title>
+    <style>
+      /*
+     * Naval color system
+     * --c-ground:   #0C1825   page background
+     * --c-surface:  #132030   card / panel background
+     * --c-surface2: #1A2D40   elevated surface / code bg
+     * --c-border:   #1E3448   border / divider
+     * --c-accent:   #3B82C4   interactive / highlight
+     * --c-text:     #DDE8F2   primary text
+     * --c-muted:    #7B9BB8   secondary / label text
+     * --c-dim:      #4A6A80   placeholder / disabled
+     */
+      :root {
+        --c-ground: #0c1825;
+        --c-surface: #132030;
+        --c-surface2: #1a2d40;
+        --c-border: #1e3448;
+        --c-accent: #3b82c4;
+        --c-text: #dde8f2;
+        --c-muted: #7b9bb8;
+        --c-dim: #4a6a80;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--c-ground);
+        color: var(--c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        overflow-x: hidden;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4 {
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--c-text);
+        line-height: 1.25;
+        margin-top: 0;
+      }
+
+      p {
+        margin: 0 0 1em;
+      }
+      a {
+        color: var(--c-accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      code,
+      pre,
+      .code-block pre {
+        font-family: "SF Mono", "Fira Mono", Consolas, monospace;
+      }
+
+      /* Layout */
+      .page {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+
+      /* ── Hero ─────────────────────────────────────────────── */
+      .hero {
+        padding: 48px 0 40px;
+        border-bottom: 1px solid var(--c-border);
+        margin-bottom: 40px;
+      }
+      .hero-tag {
+        display: inline-block;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--c-accent);
+        margin-bottom: 12px;
+      }
+      .hero h1 {
+        font-size: 2.2rem;
+        margin-bottom: 12px;
+      }
+      .hero-subtitle {
+        color: var(--c-muted);
+        font-size: 1rem;
+        margin: 0 0 14px;
+      }
+      .hero-meta {
+        font-size: 13px;
+        color: var(--c-dim);
+      }
+
+      /* ── Verdict bar ──────────────────────────────────────── */
+      .verdict {
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        margin-bottom: 32px;
+        border-left: 3px solid var(--c-accent);
+        background: var(--c-surface);
+      }
+      .verdict.success {
+        border-left-color: #34d399;
+      }
+      .verdict.warning {
+        border-left-color: #fbbf24;
+      }
+      .verdict.danger {
+        border-left-color: #f87171;
+      }
+      .verdict-icon {
+        font-size: 18px;
+        flex-shrink: 0;
+        line-height: 1.5;
+      }
+      .verdict-title {
+        font-weight: 600;
+        color: var(--c-text);
+        margin-bottom: 3px;
+      }
+      .verdict-body {
+        font-size: 13px;
+        color: var(--c-muted);
+        margin: 0;
+      }
+
+      /* ── Section heading ──────────────────────────────────── */
+      .section-heading {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--c-dim);
+        margin: 40px 0 16px;
+        font-weight: 600;
+      }
+
+      /* ── Card ─────────────────────────────────────────────── */
+      .card {
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 16px;
+      }
+      .card-title {
+        font-size: 1.05rem;
+        font-family: Georgia, serif;
+        margin-bottom: 8px;
+      }
+      .card-body {
+        color: var(--c-muted);
+        font-size: 14px;
+        margin: 0;
+      }
+      .card-footer {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--c-border);
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      /* ── Comparison table ─────────────────────────────────── */
+      .table-wrap {
+        overflow-x: auto;
+        margin-bottom: 32px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th {
+        text-align: left;
+        padding: 10px 16px;
+        font-size: 11px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--c-dim);
+        border-bottom: 1px solid var(--c-border);
+        font-weight: 600;
+      }
+      td {
+        padding: 13px 16px;
+        color: var(--c-muted);
+        border-bottom: 1px solid var(--c-border);
+        vertical-align: top;
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      .td-label {
+        color: var(--c-text);
+        font-weight: 500;
+      }
+      .td-good {
+        color: #34d399;
+      }
+      .td-warn {
+        color: #fbbf24;
+      }
+      .td-bad {
+        color: #f87171;
+      }
+
+      /* ── Code block ───────────────────────────────────────── */
+      .code-block {
+        background: var(--c-surface2);
+        border: 1px solid var(--c-border);
+        border-radius: 8px;
+        padding: 16px 20px;
+        overflow-x: auto;
+        margin-bottom: 20px;
+      }
+      .code-block-label {
+        font-size: 11px;
+        color: var(--c-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        margin-bottom: 10px;
+        font-weight: 600;
+      }
+      .code-block pre {
+        margin: 0;
+        font-size: 13px;
+        color: var(--c-text);
+        white-space: pre;
+      }
+
+      /* ── Decision form ────────────────────────────────────── */
+      .form-card {
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: 10px;
+        padding: 28px;
+        margin-bottom: 32px;
+      }
+      .form-question {
+        font-size: 1.05rem;
+        font-family: Georgia, serif;
+        margin-bottom: 6px;
+        display: block;
+      }
+      .form-hint {
+        font-size: 13px;
+        color: var(--c-muted);
+        margin-bottom: 20px;
+      }
+      .radio-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 13px 16px;
+        border: 1px solid var(--c-border);
+        border-radius: 8px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      .radio-option:has(input:checked) {
+        border-color: var(--c-accent);
+        background: rgba(59, 130, 196, 0.08);
+      }
+      .radio-option:hover {
+        border-color: var(--c-accent);
+      }
+      .radio-option input[type="radio"] {
+        margin-top: 3px;
+        flex-shrink: 0;
+        accent-color: var(--c-accent);
+        cursor: pointer;
+      }
+      .option-title {
+        font-weight: 500;
+        color: var(--c-text);
+        font-size: 14px;
+      }
+      .option-desc {
+        font-size: 12px;
+        color: var(--c-muted);
+        margin-top: 3px;
+      }
+
+      /* ── Buttons ──────────────────────────────────────────── */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 9px 20px;
+        border-radius: 7px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        line-height: 1.4;
+        transition: opacity 0.15s;
+        text-decoration: none;
+      }
+      .btn:hover:not(:disabled) {
+        opacity: 0.82;
+      }
+      .btn:disabled {
+        opacity: 0.38;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        background: var(--c-accent);
+        color: #fff;
+        border-color: var(--c-accent);
+      }
+      .btn-ghost {
+        background: transparent;
+        border-color: var(--c-border);
+        color: var(--c-muted);
+      }
+      .btn-sm {
+        padding: 6px 14px;
+        font-size: 12px;
+      }
+
+      /* ── Divider ──────────────────────────────────────────── */
+      hr {
+        border: none;
+        border-top: 1px solid var(--c-border);
+        margin: 36px 0;
+      }
+
+      /* ── Actions row ──────────────────────────────────────── */
+      .actions-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        padding: 28px 0 8px;
+      }
+
+      /* ── Sent confirmation ────────────────────────────────── */
+      .sent-msg {
+        font-size: 13px;
+        color: #34d399;
+        margin-top: 12px;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- ══ HERO ══════════════════════════════════════════════
+         Replace tag, title, subtitle, and meta.
+         Tag: category label e.g. "Technical Review", "Decision"
+         Title: artifact title
+         Subtitle: one sentence describing purpose
+         Meta: author, date, version
+    ══════════════════════════════════════════════════════ -->
+      <header class="hero">
+        <div class="hero-tag"><!-- TAG: e.g. "Technical Review" --></div>
+        <h1><!-- TITLE: Your artifact title --></h1>
+        <p class="hero-subtitle">
+          <!-- SUBTITLE: One sentence describing the purpose of this artifact. -->
+        </p>
+        <div class="hero-meta">
+          <!-- META: e.g. "Prepared by Agent · June 2026 · v1.0" -->
+        </div>
+      </header>
+
+      <!-- ══ VERDICT BAR ═════════════════════════════════════
+         Pick the variant that fits: success / warning / danger / (none = blue)
+         icon: ✓ ✗ ⚠ ℹ or any emoji
+    ══════════════════════════════════════════════════════ -->
+      <div class="verdict warning">
+        <div class="verdict-icon">⚠</div>
+        <div>
+          <div class="verdict-title"><!-- VERDICT: e.g. "Needs review before shipping" --></div>
+          <p class="verdict-body"><!-- DETAIL: one-line supporting context --></p>
+        </div>
+      </div>
+
+      <!-- ══ CARDS ═══════════════════════════════════════════
+         Use for key findings, recommendations, or summaries.
+         The card-footer is optional; remove it if no action is needed.
+    ══════════════════════════════════════════════════════ -->
+      <p class="section-heading">Key Findings</p>
+
+      <div class="card">
+        <div class="card-title"><!-- CARD TITLE --></div>
+        <p class="card-body"><!-- CARD BODY: prose, bullets, or mixed --></p>
+        <div class="card-footer">
+          <button
+            class="btn btn-sm btn-ghost"
+            data-lavish-action
+            data-lavish-prompt="Tell me more about this finding."
+            onclick="window.lavish?.queuePrompt(this.dataset.lavishPrompt)"
+          >
+            Ask about this
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><!-- CARD 2 TITLE --></div>
+        <p class="card-body"><!-- CARD 2 BODY --></p>
+      </div>
+
+      <!-- ══ COMPARISON TABLE ════════════════════════════════
+         Cell color helpers: td-label (bright), td-good (green),
+         td-warn (yellow), td-bad (red)
+    ══════════════════════════════════════════════════════ -->
+      <p class="section-heading">Comparison</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Option</th>
+              <th>Effort</th>
+              <th>Risk</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="td-label">Option A</td>
+              <td>Low</td>
+              <td class="td-good">Low</td>
+              <td><!-- description --></td>
+            </tr>
+            <tr>
+              <td class="td-label">Option B</td>
+              <td>Medium</td>
+              <td class="td-warn">Medium</td>
+              <td><!-- description --></td>
+            </tr>
+            <tr>
+              <td class="td-label">Option C</td>
+              <td>High</td>
+              <td class="td-bad">High</td>
+              <td><!-- description --></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ══ CODE BLOCK ══════════════════════════════════════
+         Label: e.g. "shell", "diff", "log output", "config"
+         Paste code or terminal output inside <pre>.
+    ══════════════════════════════════════════════════════ -->
+      <p class="section-heading">Code / Output</p>
+      <div class="code-block">
+        <div class="code-block-label"><!-- LABEL: e.g. "shell" --></div>
+        <pre><!-- paste code or output here --></pre>
+      </div>
+
+      <hr />
+
+      <!-- ══ DECISION FORM ═══════════════════════════════════
+         One submit → queuePrompt (no multiple sends).
+         Duplicate the .radio-option block for more choices.
+    ══════════════════════════════════════════════════════ -->
+      <div class="form-card">
+        <span class="form-question"><!-- QUESTION: What should the user decide? --></span>
+        <p class="form-hint"><!-- HINT: context or constraints for the decision --></p>
+
+        <label class="radio-option">
+          <input type="radio" name="decision" value="option_a" />
+          <div>
+            <div class="option-title">Option A</div>
+            <div class="option-desc"><!-- brief description of this choice --></div>
+          </div>
+        </label>
+
+        <label class="radio-option">
+          <input type="radio" name="decision" value="option_b" />
+          <div>
+            <div class="option-title">Option B</div>
+            <div class="option-desc"><!-- brief description of this choice --></div>
+          </div>
+        </label>
+
+        <label class="radio-option">
+          <input type="radio" name="decision" value="option_c" />
+          <div>
+            <div class="option-title">Option C</div>
+            <div class="option-desc"><!-- brief description of this choice --></div>
+          </div>
+        </label>
+
+        <div style="margin-top: 20px">
+          <button class="btn btn-primary" id="submit-decision" onclick="submitDecision()">Submit decision</button>
+          <p class="sent-msg" id="sent-msg">✓ Sent - waiting for the agent to respond.</p>
+        </div>
+      </div>
+
+      <!-- ══ ACTION BUTTONS ═══════════════════════════════════
+         Standalone CTAs for quick approve / hold patterns.
+    ══════════════════════════════════════════════════════ -->
+      <div class="actions-row">
+        <button
+          class="btn btn-primary"
+          data-lavish-action
+          onclick="window.lavish?.queuePrompt('Approved - proceed with the recommended approach.')"
+        >
+          Approve &amp; Continue
+        </button>
+        <button
+          class="btn btn-ghost"
+          data-lavish-action
+          onclick="window.lavish?.queuePrompt('Hold - I need to review this further before deciding.')"
+        >
+          Hold for Review
+        </button>
+      </div>
+    </div>
+    <!-- /.page -->
+
+    <script>
+      function submitDecision() {
+        const selected = document.querySelector('input[name="decision"]:checked');
+        if (!selected) {
+          alert("Please select an option first.");
+          return;
+        }
+        const label = selected.closest(".radio-option").querySelector(".option-title").textContent.trim();
+        const prompt = `Decision: ${label} (value: ${selected.value})`;
+
+        if (window.lavish) {
+          document.getElementById("submit-decision").disabled = true;
+          document.getElementById("sent-msg").style.display = "block";
+          window.lavish.queuePrompt(prompt);
+          window.lavish.sendQueuedPrompts();
+        } else {
+          alert("Decision: " + label + "\n\nOpen this file via lavish-axi to send it to the agent.");
+        }
+      }
+    </script>
+  </body>
+</html>
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║         FIRSTMATE NAVAL TEMPLATE - QUICK REFERENCE          ║
+╚══════════════════════════════════════════════════════════════╝
+
+COLOR TOKENS (CSS custom properties):
+  --c-ground:   #0C1825   page background
+  --c-surface:  #132030   card / panel surface
+  --c-surface2: #1A2D40   elevated surface, code blocks
+  --c-border:   #1E3448   borders and dividers
+  --c-accent:   #3B82C4   interactive elements, highlights
+  --c-text:     #DDE8F2   primary text
+  --c-muted:    #7B9BB8   secondary / label text
+  --c-dim:      #4A6A80   placeholder / disabled
+
+VERDICT BAR variants:
+  <div class="verdict">          - neutral/blue accent (default)
+  <div class="verdict success">  - green  (#34d399) for good news
+  <div class="verdict warning">  - yellow (#fbbf24) for caution
+  <div class="verdict danger">   - red    (#f87171) for blocking issues
+
+BUTTON variants:
+  <button class="btn btn-primary">Action</button>     - filled blue
+  <button class="btn btn-ghost">Secondary</button>    - bordered ghost
+  <button class="btn btn-sm btn-primary">Sm</button>  - small filled
+  (add :disabled or JS .disabled = true to grey it out)
+
+CARD with lavish annotation button:
+  <div class="card">
+    <div class="card-title">Finding Title</div>
+    <p class="card-body">Supporting detail here.</p>
+    <div class="card-footer">
+      <button class="btn btn-sm btn-ghost"
+              data-lavish-action
+              data-lavish-prompt="Ask about this finding."
+              onclick="window.lavish?.queuePrompt(this.dataset.lavishPrompt)">
+        Ask about this
+      </button>
+    </div>
+  </div>
+
+TABLE status cells:
+  <td class="td-label">Name</td>   - bright white  (row label)
+  <td class="td-good">Low</td>     - green  (#34d399)
+  <td class="td-warn">Medium</td>  - yellow (#fbbf24)
+  <td class="td-bad">High</td>     - red    (#f87171)
+
+LAVISH INTERACTION PATTERNS:
+
+1. Inline annotation (element-level):
+   <button data-lavish-action
+           data-lavish-prompt="My prompt text."
+           onclick="window.lavish?.queuePrompt(this.dataset.lavishPrompt)">
+     Annotate
+   </button>
+
+2. Decision form → single submit:
+   function submitDecision() {
+     const sel = document.querySelector('input[name="decision"]:checked');
+     if (!sel) return;
+     window.lavish?.queuePrompt(`Decision: ${sel.value}`);
+     window.lavish?.sendQueuedPrompts();
+   }
+
+3. Per-question deduplication (replaces prior queue entry for same key):
+   window.lavish?.queuePrompt(text, { queueKey: 'unique-question-id' });
+
+4. Programmatic send without a button:
+   window.lavish?.sendQueuedPrompts();
+
+NOTES:
+  - window.lavish is injected at serve time by lavish-axi.
+  - Use optional chaining (window.lavish?.…) so the artifact stays
+    functional when opened directly without lavish-axi running.
+  - Native controls (button, input, select, textarea, label, summary,
+    editable regions) and their descendants are excluded from
+    annotation mode automatically - no data-lavish-action needed.
+  - Use data-lavish-action only on custom non-native controls.
+  - All CSS is inline - no CDN, compatible with claude.ai Artifact CSP.
+-->
