@@ -78,9 +78,10 @@ export async function newCommand(args) {
 
   try {
     await access(outputPath);
+    const recoveryFlag = template === DEFAULT_TEMPLATE ? "" : ` --template ${template}`;
     throw new AxiError(`Output file already exists: ${outputPath}`, "VALIDATION_ERROR", [
       "Delete or rename the existing file first, or pass a different output path",
-      `Run \`lavish-axi new --template ${template} <new-path>\` to write to a different location`,
+      `Run \`lavish-axi new${recoveryFlag} <new-path>\` to write to a different location`,
     ]);
   } catch (err) {
     if (err instanceof AxiError) throw err;
