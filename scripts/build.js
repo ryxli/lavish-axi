@@ -24,6 +24,8 @@ await esbuild.build({
 await chmod("dist/cli.mjs", 0o755);
 await copyFile("src/chrome-client.js", "dist/chrome-client.js");
 await copyFile("src/chrome.css", "dist/chrome.css");
+await mkdir("dist/templates", { recursive: true });
+await copyFile("src/templates/firstmate.html", "dist/templates/firstmate.html");
 await mkdir("dist/design", { recursive: true });
 await copyFile("node_modules/daisyui/daisyui.css", "dist/design/daisyui.css");
 await copyFile("node_modules/daisyui/themes.css", "dist/design/daisyui-themes.css");
