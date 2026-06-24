@@ -1,0 +1,35 @@
+<!-- ==SECTION:decision-form== use for: asking the user to choose one option; submitDecision() queues a single prompt on submit -->
+<div class="form-card">
+  <span class="form-question"><!-- QUESTION: What should the user decide? --></span>
+  <p class="form-hint"><!-- HINT: context or constraints for the decision --></p>
+
+  <label class="radio-option">
+    <input type="radio" name="decision" value="option_a" />
+    <div>
+      <div class="option-title">Option A</div>
+      <div class="option-desc"><!-- brief description of this choice --></div>
+    </div>
+  </label>
+
+  <label class="radio-option">
+    <input type="radio" name="decision" value="option_b" />
+    <div>
+      <div class="option-title">Option B</div>
+      <div class="option-desc"><!-- brief description of this choice --></div>
+    </div>
+  </label>
+
+  <label class="radio-option">
+    <input type="radio" name="decision" value="option_c" />
+    <div>
+      <div class="option-title">Option C</div>
+      <div class="option-desc"><!-- brief description of this choice --></div>
+    </div>
+  </label>
+
+  <div style="margin-top: 20px">
+    <button class="btn btn-primary" id="submit-decision" onclick="submitDecision()">Submit decision</button>
+    <p class="sent-msg" id="sent-msg">&#10003; Sent - waiting for the agent to respond.</p>
+  </div>
+</div>
+<!-- ==/SECTION:decision-form== -->

@@ -365,173 +365,173 @@
         margin-top: 12px;
         display: none;
       }
+      /* ── Metric grid ──────────────────────────────────────── */
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+        gap: 16px;
+        margin-bottom: 32px;
+      }
+      .metric-tile {
+        min-width: 0;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: 10px;
+        padding: 20px 22px;
+      }
+      .metric-value {
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 2rem;
+        line-height: 1.1;
+        color: var(--c-text);
+        overflow-wrap: anywhere;
+      }
+      .metric-label {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--c-dim);
+        margin-top: 8px;
+        overflow-wrap: anywhere;
+      }
+      .metric-delta {
+        font-size: 12px;
+        color: var(--c-muted);
+        margin-top: 10px;
+        overflow-wrap: anywhere;
+      }
+      .metric-delta--good {
+        color: #34d399;
+      }
+      .metric-delta--warn {
+        color: #fbbf24;
+      }
+
+      /* ── Callout (inline note) ────────────────────────────── */
+      .callout {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 16px;
+        margin: 0 0 16px;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-left: 3px solid var(--c-accent);
+        border-radius: 8px;
+      }
+      .callout-icon {
+        flex-shrink: 0;
+        font-size: 15px;
+        line-height: 1.4;
+        color: var(--c-accent);
+      }
+      .callout-body {
+        min-width: 0;
+      }
+      .callout-title {
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--c-text);
+        margin-bottom: 2px;
+        overflow-wrap: anywhere;
+      }
+      .callout-text {
+        margin: 0;
+        font-size: 13px;
+        color: var(--c-muted);
+        overflow-wrap: anywhere;
+      }
+      .callout--info {
+        border-left-color: var(--c-accent);
+      }
+      .callout--info .callout-icon {
+        color: var(--c-accent);
+      }
+      .callout--tip {
+        border-left-color: #34d399;
+      }
+      .callout--tip .callout-icon {
+        color: #34d399;
+      }
+      .callout--warn {
+        border-left-color: #fbbf24;
+      }
+      .callout--warn .callout-icon {
+        color: #fbbf24;
+      }
+
+      /* ── Timeline ─────────────────────────────────────────── */
+      .timeline {
+        list-style: none;
+        margin: 0 0 32px;
+        padding: 0;
+      }
+      .timeline-item {
+        position: relative;
+        min-width: 0;
+        padding: 0 0 24px 28px;
+      }
+      .timeline-item:last-child {
+        padding-bottom: 0;
+      }
+      .timeline-item::before {
+        content: "";
+        position: absolute;
+        left: 5px;
+        top: 4px;
+        bottom: -4px;
+        width: 1px;
+        background: var(--c-border);
+      }
+      .timeline-item:last-child::before {
+        display: none;
+      }
+      .timeline-marker {
+        position: absolute;
+        left: 0;
+        top: 4px;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: var(--c-ground);
+        border: 2px solid var(--c-accent);
+      }
+      .timeline-content {
+        min-width: 0;
+      }
+      .timeline-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 2px 10px;
+        margin-bottom: 4px;
+      }
+      .timeline-title {
+        color: var(--c-text);
+        font-weight: 600;
+        font-size: 14px;
+        overflow-wrap: anywhere;
+      }
+      .timeline-meta {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--c-dim);
+        overflow-wrap: anywhere;
+      }
+      .timeline-body {
+        margin: 0;
+        font-size: 13px;
+        color: var(--c-muted);
+        overflow-wrap: anywhere;
+      }
     </style>
   </head>
   <body>
     <div class="page">
-      <!-- ══ HERO ══════════════════════════════════════════════
-         Replace tag, title, subtitle, and meta.
-         Tag: category label e.g. "Technical Review", "Decision"
-         Title: artifact title
-         Subtitle: one sentence describing purpose
-         Meta: author, date, version
-    ══════════════════════════════════════════════════════ -->
-      <header class="hero">
-        <div class="hero-tag"><!-- TAG: e.g. "Technical Review" --></div>
-        <h1><!-- TITLE: Your artifact title --></h1>
-        <p class="hero-subtitle">
-          <!-- SUBTITLE: One sentence describing the purpose of this artifact. -->
-        </p>
-        <div class="hero-meta">
-          <!-- META: e.g. "Prepared by Agent · June 2026 · v1.0" -->
-        </div>
-      </header>
-
-      <!-- ══ VERDICT BAR ═════════════════════════════════════
-         Pick the variant that fits: success / warning / danger / (none = blue)
-         icon: ✓ ✗ ⚠ ℹ or any emoji
-    ══════════════════════════════════════════════════════ -->
-      <div class="verdict warning">
-        <div class="verdict-icon">⚠</div>
-        <div>
-          <div class="verdict-title"><!-- VERDICT: e.g. "Needs review before shipping" --></div>
-          <p class="verdict-body"><!-- DETAIL: one-line supporting context --></p>
-        </div>
-      </div>
-
-      <!-- ══ CARDS ═══════════════════════════════════════════
-         Use for key findings, recommendations, or summaries.
-         The card-footer is optional; remove it if no action is needed.
-    ══════════════════════════════════════════════════════ -->
-      <p class="section-heading">Key Findings</p>
-
-      <div class="card">
-        <div class="card-title"><!-- CARD TITLE --></div>
-        <p class="card-body"><!-- CARD BODY: prose, bullets, or mixed --></p>
-        <div class="card-footer">
-          <button
-            class="btn btn-sm btn-ghost"
-            data-lavish-action
-            data-lavish-prompt="Tell me more about this finding."
-            onclick="window.lavish?.queuePrompt(this.dataset.lavishPrompt)"
-          >
-            Ask about this
-          </button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title"><!-- CARD 2 TITLE --></div>
-        <p class="card-body"><!-- CARD 2 BODY --></p>
-      </div>
-
-      <!-- ══ COMPARISON TABLE ════════════════════════════════
-         Cell color helpers: td-label (bright), td-good (green),
-         td-warn (yellow), td-bad (red)
-    ══════════════════════════════════════════════════════ -->
-      <p class="section-heading">Comparison</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Option</th>
-              <th>Effort</th>
-              <th>Risk</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="td-label">Option A</td>
-              <td>Low</td>
-              <td class="td-good">Low</td>
-              <td><!-- description --></td>
-            </tr>
-            <tr>
-              <td class="td-label">Option B</td>
-              <td>Medium</td>
-              <td class="td-warn">Medium</td>
-              <td><!-- description --></td>
-            </tr>
-            <tr>
-              <td class="td-label">Option C</td>
-              <td>High</td>
-              <td class="td-bad">High</td>
-              <td><!-- description --></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- ══ CODE BLOCK ══════════════════════════════════════
-         Label: e.g. "shell", "diff", "log output", "config"
-         Paste code or terminal output inside <pre>.
-    ══════════════════════════════════════════════════════ -->
-      <p class="section-heading">Code / Output</p>
-      <div class="code-block">
-        <div class="code-block-label"><!-- LABEL: e.g. "shell" --></div>
-        <pre><!-- paste code or output here --></pre>
-      </div>
-
-      <hr />
-
-      <!-- ══ DECISION FORM ═══════════════════════════════════
-         One submit → queuePrompt (no multiple sends).
-         Duplicate the .radio-option block for more choices.
-    ══════════════════════════════════════════════════════ -->
-      <div class="form-card">
-        <span class="form-question"><!-- QUESTION: What should the user decide? --></span>
-        <p class="form-hint"><!-- HINT: context or constraints for the decision --></p>
-
-        <label class="radio-option">
-          <input type="radio" name="decision" value="option_a" />
-          <div>
-            <div class="option-title">Option A</div>
-            <div class="option-desc"><!-- brief description of this choice --></div>
-          </div>
-        </label>
-
-        <label class="radio-option">
-          <input type="radio" name="decision" value="option_b" />
-          <div>
-            <div class="option-title">Option B</div>
-            <div class="option-desc"><!-- brief description of this choice --></div>
-          </div>
-        </label>
-
-        <label class="radio-option">
-          <input type="radio" name="decision" value="option_c" />
-          <div>
-            <div class="option-title">Option C</div>
-            <div class="option-desc"><!-- brief description of this choice --></div>
-          </div>
-        </label>
-
-        <div style="margin-top: 20px">
-          <button class="btn btn-primary" id="submit-decision" onclick="submitDecision()">Submit decision</button>
-          <p class="sent-msg" id="sent-msg">✓ Sent - waiting for the agent to respond.</p>
-        </div>
-      </div>
-
-      <!-- ══ ACTION BUTTONS ═══════════════════════════════════
-         Standalone CTAs for quick approve / hold patterns.
-    ══════════════════════════════════════════════════════ -->
-      <div class="actions-row">
-        <button
-          class="btn btn-primary"
-          data-lavish-action
-          onclick="window.lavish?.queuePrompt('Approved - proceed with the recommended approach.')"
-        >
-          Approve &amp; Continue
-        </button>
-        <button
-          class="btn btn-ghost"
-          data-lavish-action
-          onclick="window.lavish?.queuePrompt('Hold - I need to review this further before deciding.')"
-        >
-          Hold for Review
-        </button>
-      </div>
+      <!-- ==LAVISH:SECTIONS== -->
     </div>
     <!-- /.page -->
 
@@ -637,4 +637,24 @@ NOTES:
     annotation mode automatically - no data-lavish-action needed.
   - Use data-lavish-action only on custom non-native controls.
   - All CSS is inline - no CDN, compatible with claude.ai Artifact CSP.
+
+SECTION CATALOG - add, reorder, or delete any ==SECTION:name== block to mutate
+the artifact; every section's CSS is already inline, so any block can be pasted in:
+  hero              title block (tag, title, subtitle, meta)
+  verdict           one-line headline judgment banner (success/warning/danger)
+  metric-grid       responsive grid of stat tiles (KPIs, counts, before/after)
+  cards             key findings / recommendations
+  callout           inline note / aside (info / tip / warn)
+  comparison-table  options or rows with td-good / td-warn / td-bad cells
+  timeline          ordered phases on a connecting line (plans, rollouts)
+  code-block        shell / diff / log / config output
+  decision-form     single-choice radio form, one queued submit
+  actions           standalone approve / hold CTAs
+
+CONCEPT PRESETS - scaffold with: lavish-axi new --template name
+  firstmate    full gallery of every section (default)
+  plan         hero + verdict + timeline + cards + actions
+  comparison   hero + comparison-table + verdict + decision-form
+  report       hero + verdict + metric-grid + cards + code-block
+  decision     hero + verdict + callout + decision-form + actions
 -->

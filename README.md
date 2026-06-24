@@ -158,18 +158,18 @@ pnpm link
 
 ## CLI Reference
 
-| Command                              | Description                                                                                                                                                                 |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lavish-axi`                         | Show current sessions and usage guidance.                                                                                                                                   |
-| `lavish-axi <html-file>`             | Open or resume a Lavish Editor session, with the open-time layout gate enabled by default.                                                                                  |
-| `lavish-axi new [--template <name>]` | Scaffold a new artifact from a built-in template (default `firstmate`) into `.lavish/<name>.html`, or an optional output path.                                              |
-| `lavish-axi poll <html-file>`        | Long-poll until the user sends feedback, ends the session, or the browser reports fresh `layout_warnings`; leave no-timeout polls running, or re-run them if interrupted.   |
-| `lavish-axi end <html-file>`         | End a session.                                                                                                                                                              |
-| `lavish-axi stop`                    | Shut down the background server.                                                                                                                                            |
-| `lavish-axi playbook [id]`           | List focused artifact guidance or show one playbook; agents must open each matching playbook before writing HTML.                                                           |
-| `lavish-axi design`                  | Show the Tailwind + DaisyUI CDN fallback, content-to-playbook router, Mermaid diagram tooling, `luxury` default theme, DaisyUI `@apply` warning, and layout safety snippet. |
-| `lavish-axi setup hooks`             | Install or repair optional SessionStart hooks for Claude Code, Codex, and OpenCode; restart the agent session afterward.                                                    |
-| `lavish-axi server`                  | Run the local Lavish Editor server.                                                                                                                                         |
+| Command                              | Description                                                                                                                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lavish-axi`                         | Show current sessions and usage guidance.                                                                                                                                                       |
+| `lavish-axi <html-file>`             | Open or resume a Lavish Editor session, with the open-time layout gate enabled by default.                                                                                                      |
+| `lavish-axi new [--template <name>]` | Scaffold a concept-preset artifact into `.lavish/<name>.html` or an optional output path; available concepts: `firstmate` (default - full gallery), `plan`, `comparison`, `report`, `decision`. |
+| `lavish-axi poll <html-file>`        | Long-poll until the user sends feedback, ends the session, or the browser reports fresh `layout_warnings`; leave no-timeout polls running, or re-run them if interrupted.                       |
+| `lavish-axi end <html-file>`         | End a session.                                                                                                                                                                                  |
+| `lavish-axi stop`                    | Shut down the background server.                                                                                                                                                                |
+| `lavish-axi playbook [id]`           | List focused artifact guidance or show one playbook; agents must open each matching playbook before writing HTML.                                                                               |
+| `lavish-axi design`                  | Show the Tailwind + DaisyUI CDN fallback, content-to-playbook router, Mermaid diagram tooling, `luxury` default theme, DaisyUI `@apply` warning, and layout safety snippet.                     |
+| `lavish-axi setup hooks`             | Install or repair optional SessionStart hooks for Claude Code, Codex, and OpenCode; restart the agent session afterward.                                                                        |
+| `lavish-axi server`                  | Run the local Lavish Editor server.                                                                                                                                                             |
 
 Known playbook IDs: `diagram`, `table`, `comparison`, `plan`, `code`, `input`, `slides`.
 One artifact often combines several playbooks, such as a plan that includes a comparison and a diagram, so agents must match against each `use_when` trigger and open every matching playbook before writing HTML.
@@ -186,6 +186,40 @@ For flows, architecture, state, or sequence diagrams, open the diagram playbook 
 | `lavish-axi poll`        | `--timeout-ms <ms>`   | Test/debug escape hatch only; agents should normally omit it and leave the long poll running.                                                                                                                                       |
 | `lavish-axi stop`        | `--port <port>`       | Shut down a server running on a non-default port.                                                                                                                                                                                   |
 | `lavish-axi server`      | `--verbose`           | Log session and watcher events to stderr; can also be enabled with `LAVISH_AXI_DEBUG=1`. Detached server output is appended to `~/.lavish-axi/server.log` (or `LAVISH_AXI_STATE_DIR/server.log`) for startup and crash diagnostics. |
+
+### Templates and sections
+
+`lavish-axi new --template <concept>` scaffolds a curated starting point - a subset of sections chosen for the task type.
+
+Available concept presets:
+
+| Concept      | Sections included                              |
+| ------------ | ---------------------------------------------- |
+| `firstmate`  | Full gallery of all 10 sections - the default  |
+| `plan`       | hero, verdict, timeline, cards, actions        |
+| `comparison` | hero, comparison-table, verdict, decision-form |
+| `report`     | hero, verdict, metric-grid, cards, code-block  |
+| `decision`   | hero, verdict, callout, decision-form, actions |
+
+Every concept is built from the shared **section catalog** - 10 self-contained blocks, each delimited by `<!-- ==SECTION:name== -->` ... `<!-- ==/SECTION:name== -->`:
+
+| Section            | Purpose                                                        |
+| ------------------ | -------------------------------------------------------------- |
+| `hero`             | Title block - tag, title, subtitle, meta line                  |
+| `verdict`          | One-line headline judgment banner (success / warning / danger) |
+| `metric-grid`      | Responsive grid of stat tiles (KPIs, counts, before/after)     |
+| `cards`            | Key findings or recommendations                                |
+| `callout`          | Inline note or aside (info / tip / warn)                       |
+| `comparison-table` | Options or rows with color-coded good / warn / bad cells       |
+| `timeline`         | Ordered phases on a connecting line (plans, rollouts)          |
+| `code-block`       | Shell, diff, log, or config output                             |
+| `decision-form`    | Single-choice radio form with one queued submit                |
+| `actions`          | Standalone approve / hold call-to-action buttons               |
+
+Every scaffolded file embeds all section CSS inline - no CDN, no extra setup.
+Mutate an artifact for any task by adding, reordering, or deleting `<!-- ==SECTION:name== -->` blocks.
+
+To use a custom template library, point `LAVISH_AXI_TEMPLATES_DIR` at a directory containing composed `.html` files; `lavish-axi new` will discover and use them instead of the built-ins.
 
 ## Development
 

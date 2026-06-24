@@ -1,0 +1,23 @@
+<!-- ==SECTION:cards== use for: key findings, recommendations, or summaries; duplicate .card per item, the .card-footer button is optional -->
+<p class="section-heading">Key Findings</p>
+
+<div class="card">
+  <div class="card-title"><!-- CARD TITLE --></div>
+  <p class="card-body"><!-- CARD BODY: prose, bullets, or mixed --></p>
+  <div class="card-footer">
+    <button
+      class="btn btn-sm btn-ghost"
+      data-lavish-action
+      data-lavish-prompt="Tell me more about this finding."
+      onclick="window.lavish?.queuePrompt(this.dataset.lavishPrompt)"
+    >
+      Ask about this
+    </button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><!-- CARD 2 TITLE --></div>
+  <p class="card-body"><!-- CARD 2 BODY --></p>
+</div>
+<!-- ==/SECTION:cards== -->

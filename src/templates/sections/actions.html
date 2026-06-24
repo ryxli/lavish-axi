@@ -1,0 +1,18 @@
+<!-- ==SECTION:actions== use for: standalone approve/hold CTAs that queue a prompt on click -->
+<div class="actions-row">
+  <button
+    class="btn btn-primary"
+    data-lavish-action
+    onclick="window.lavish?.queuePrompt('Approved - proceed with the recommended approach.')"
+  >
+    Approve &amp; Continue
+  </button>
+  <button
+    class="btn btn-ghost"
+    data-lavish-action
+    onclick="window.lavish?.queuePrompt('Hold - I need to review this further before deciding.')"
+  >
+    Hold for Review
+  </button>
+</div>
+<!-- ==/SECTION:actions== -->

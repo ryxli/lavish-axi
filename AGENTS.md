@@ -106,6 +106,21 @@ The playbook guidance tells agents that one artifact can combine several playboo
 Diagram guidance names hand-built div/flexbox boxes-and-arrows as an anti-pattern and points flow, architecture, state, and sequence diagrams to Mermaid unless SVG is needed.
 The bare-arg form (`lavish-axi some.html`) is normalized into `["open", "some.html"]` by `normalizeArgv`.
 
+### Template composition
+
+The `lavish-axi new` scaffolding system composes templates from three source layers:
+
+- `src/templates/base.html` - the document shell; contains all section CSS inline, naval dark color tokens, and a `<!-- ==LAVISH:SECTIONS== -->` placeholder where ordered sections are inserted.
+- `src/templates/sections/<name>.html` - 10 self-contained section partials, each delimited by `<!-- ==SECTION:<name>== -->` ... `<!-- ==/SECTION:<name>== -->`. Catalog: `hero`, `verdict`, `metric-grid`, `cards`, `callout`, `comparison-table`, `timeline`, `code-block`, `decision-form`, `actions`.
+- `src/templates/concepts/<name>.json` - ordered section manifests in the shape `{ title, sections: [...] }`. Presets: `firstmate` (full gallery, default), `plan`, `comparison`, `report`, `decision`.
+
+`scripts/build.js` composes each concept into `dist/templates/<concept>.html` by substituting the `<!-- ==LAVISH:SECTIONS== -->` placeholder with the ordered section partials and injecting the manifest's `title` into the document `<title>`.
+`src/new-command.js` resolves templates from `dist/templates/`; set `LAVISH_AXI_TEMPLATES_DIR` to override with a custom directory.
+
+**Adding a section:** (1) Create `src/templates/sections/<name>.html` with the `<!-- ==SECTION:<name>== -->` ... `<!-- ==/SECTION:<name>== -->` delimiters and the section HTML. (2) Add the section's CSS to the `<style>` block in `src/templates/base.html`. (3) Reference `<name>` in a concept manifest's `sections` array and run `pnpm run build` to compose.
+
+**Adding a concept:** Create `src/templates/concepts/<name>.json` with `{ "title": "...", "sections": ["sectionA", "sectionB", ...] }` listing sections in display order, then run `pnpm run build`.
+
 ### Telemetry
 
 `src/telemetry.js` posts anonymous events to an Umami endpoint.
