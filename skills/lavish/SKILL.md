@@ -29,7 +29,7 @@ Use lavish-axi when the user asks for a visual artifact, HTML explainer, interac
 
 ## Workflow
 
-1. Create the HTML artifact (default location `.lavish/<name>.html` in the working directory).
+1. Start from a template instead of hand-writing boilerplate: `npx -y lavish-axi new [--template <name>] [output-path]` writes a ready artifact to `.lavish/<name>.html` (default template `firstmate`: self-contained naval theme, overflow guards, and all window.lavish interaction JS already baked in). Replace the placeholder content in `<main>` and skip re-deriving theme/CSS/JS. Only hand-author from scratch when the user wants a custom design the templates do not cover.
 2. Run `npx -y lavish-axi <html-file>` to open or resume a review session in the browser.
 3. Run `npx -y lavish-axi poll <html-file>` to long-poll for the user's annotations, queued prompts, and browser-reported `layout_warnings`.
    The poll stays silent until the user acts or the real browser reports fresh layout warnings - leave it running, never kill it.
@@ -61,6 +61,7 @@ For flows, architecture, state, or sequence diagrams, do not hand-build boxes-an
 
 ## Commands & rules
 
+- Fastest start: run `npx -y lavish-axi new [--template <name>] [output-path]` to scaffold a ready artifact (default `firstmate` template) with theme, overflow guards, and window.lavish interaction JS already baked in, then replace the placeholder content - prefer this over hand-writing boilerplate when no custom design is required
 - Run `npx -y lavish-axi <html-file>` to open or resume a Lavish Editor session
 - Unless the user specifies another location, create HTML artifacts in the current working directory under `.lavish/`
 - Lavish serves the html file through a local express.js server. If your html needs to reference other filesystem assets such as images, CSS, fonts, and local scripts, copy them into the same directory as the HTML file, then reference them with relative paths from that directory. Never prepend `/` to those asset paths - root paths won't work
