@@ -79,7 +79,7 @@ State lives at `~/.lavish-axi/state.json` (override with `LAVISH_AXI_STATE_DIR`)
    The CLI also writes an immediate waiting banner and per-minute waiting messages to stderr for no-timeout polls, keeping stdout reserved for the final JSON/TOON response.
    If SIGINT or SIGTERM interrupts a no-timeout poll, the CLI writes re-run guidance to stderr and exits with the conventional signal code; queued feedback persists, so re-running the same poll is safe.
 9. The `/events/:key` SSE stream emits `agent-presence` states: `waiting` before any poll has attached, `listening` while a poll is active, and `working` after a poll has delivered feedback and released.
-   The chrome uses this state to show the waiting banner, allow queued feedback while waiting or listening, and block sends only while working.
+   The chrome uses this state to show the waiting banner and to gate delivery: the composer never blocks input. While `working`, freeform messages and `data-lavish-action`/`queuePrompt` items queue locally (the `#sendHint` node shows a `Queued (N)` count) instead of POSTing, and `setAgentPresence` auto-flushes the queue through the existing snapshot -> `submitQueued` path exactly once the moment presence transitions off `working` (guarded by `pendingFlush` and `submitQueuedPromise` against flaps/races). Only an ended session disables Send.
 10. `--agent-reply` posts a chat message into the session before polling, so the agent's reply renders in the browser conversation panel via the `/events/:key` SSE stream.
 
 ### Live reload

@@ -470,3 +470,119 @@ test("chrome client strips the internal queue key before posting prompts", async
   });
   assert.equal(chrome.queued().length, 0);
 });
+
+function sendPresence(chrome, state) {
+  const handler = chrome.eventSource().listeners.get("agent-presence");
+  assert.ok(handler, "agent-presence listener registered");
+  handler({ data: JSON.stringify({ state }) });
+}
+
+function snapshotRequestCount(chrome) {
+  return chrome.postedToFrame.filter((m) => m.type === "lavish:requestSnapshot").length;
+}
+
+test("composer queues while the agent is working and never posts", async () => {
+  const posts = [];
+  const chrome = await createChromeHarness({
+    fetchImpl: async (url, init) => {
+      posts.push({ url, body: JSON.parse(init.body) });
+      return { ok: true };
+    },
+  });
+
+  sendPresence(chrome, "working");
+
+  // composer controls stay enabled while working
+  assert.equal(chrome.element("send").disabled, false);
+  assert.equal(chrome.element("sendCaret").disabled, false);
+  assert.equal(chrome.element("chatInput").disabled, false);
+
+  chrome.element("chatInput").value = "first message";
+  chrome.element("send").onclick();
+  chrome.element("chatInput").value = "second message";
+  chrome.element("send").onclick();
+  await flushPromises();
+
+  assert.equal(posts.length, 0, "nothing posts while working");
+  assert.equal(snapshotRequestCount(chrome), 0, "no snapshot requested while working");
+  assert.deepEqual(
+    chrome.queued().map((prompt) => prompt.prompt),
+    ["first message", "second message"],
+  );
+
+  // queued count visible by reusing the send hint node
+  const hint = chrome.element("sendHint");
+  assert.equal(hint.hidden, false);
+  assert.match(hint.textContent, /Queued \(2\)/);
+});
+
+test("queued prompts flush exactly once when presence leaves working", async () => {
+  const posts = [];
+  const chrome = await createChromeHarness({
+    fetchImpl: async (url, init) => {
+      posts.push({ url, body: JSON.parse(init.body) });
+      return { ok: true };
+    },
+  });
+
+  sendPresence(chrome, "working");
+  chrome.element("chatInput").value = "first message";
+  chrome.element("send").onclick();
+  chrome.element("chatInput").value = "second message";
+  chrome.element("send").onclick();
+  assert.equal(posts.length, 0);
+
+  // presence leaves working -> exactly one snapshot request
+  sendPresence(chrome, "listening");
+  assert.equal(snapshotRequestCount(chrome), 1);
+  assert.equal(chrome.postedToFrame.at(-1).type, "lavish:requestSnapshot");
+
+  // presence flaps back and forth before the snapshot arrives: no extra requests
+  sendPresence(chrome, "working");
+  sendPresence(chrome, "listening");
+  assert.equal(snapshotRequestCount(chrome), 1, "flapping presence does not re-request snapshot");
+  assert.equal(posts.length, 0, "no post until the snapshot arrives");
+
+  // snapshot arrives -> single POST carrying both queued prompts
+  chrome.sendFrameMessage({ type: "lavish:snapshot", snapshot: "uid=1 body" });
+  await flushPromises();
+
+  assert.equal(posts.length, 1, "exactly one flush");
+  assert.equal(posts[0].url, "/api/abc/prompts");
+  assert.deepEqual(
+    posts[0].body.prompts.map((prompt) => prompt.prompt),
+    ["first message", "second message"],
+  );
+  assert.equal(chrome.queued().length, 0);
+});
+
+test("data-lavish-action queue prompts flush once the agent goes idle", async () => {
+  const posts = [];
+  const chrome = await createChromeHarness({
+    fetchImpl: async (url, init) => {
+      posts.push({ url, body: JSON.parse(init.body) });
+      return { ok: true };
+    },
+  });
+
+  sendPresence(chrome, "working");
+  // a data-lavish-action button in the artifact queues via queuePrompt
+  chrome.sendFrameMessage({
+    type: "lavish:queuePrompt",
+    prompt: { prompt: "Approve plan", selector: "button#approve", tag: "choice", text: "Approve" },
+  });
+  await flushPromises();
+  assert.equal(posts.length, 0, "queued, not posted, while working");
+  assert.equal(chrome.queued().length, 1);
+
+  sendPresence(chrome, "waiting");
+  chrome.sendFrameMessage({ type: "lavish:snapshot", snapshot: "uid=1 body" });
+  await flushPromises();
+
+  assert.equal(posts.length, 1);
+  assert.deepEqual(
+    posts[0].body.prompts.map((prompt) => prompt.prompt),
+    ["Approve plan"],
+  );
+  assert.equal(chrome.queued().length, 0);
+});

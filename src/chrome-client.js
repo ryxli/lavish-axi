@@ -65,6 +65,8 @@ let lastScroll = { x: 0, y: 0 };
 let copyHintTimer;
 /** @type {ReturnType<typeof setTimeout> | undefined} */
 let sendHintTimer;
+let pendingFlush = false;
+const defaultSendHintText = sendHint.textContent;
 
 function escapeHtml(value) {
   return String(value).replace(
@@ -126,15 +128,17 @@ function render() {
     closeButton.addEventListener("click", (event) => removeQueuedPrompt(Number(closeButton.dataset.index), event));
   }
   updateSendState();
+  updateQueuedCountHint();
 }
 
 function updateSendState() {
-  sendButton.disabled = ended || agentPresence === "working";
-  sendCaret.disabled = ended || agentPresence === "working";
+  sendButton.disabled = ended;
+  sendCaret.disabled = ended;
   sendFromMenuButton.disabled = sendButton.disabled;
 }
 
 function showSendHint() {
+  sendHint.textContent = defaultSendHintText;
   sendHint.hidden = false;
   clearTimeout(sendHintTimer);
   sendHintTimer = setTimeout(() => {
@@ -146,6 +150,19 @@ function showSendHint() {
 function hideSendHint() {
   clearTimeout(sendHintTimer);
   sendHint.hidden = true;
+}
+
+function updateQueuedCountHint() {
+  if (agentPresence === "working" && queued.length) {
+    clearTimeout(sendHintTimer);
+    sendHint.textContent = "Queued (" + queued.length + "). Will send when the agent is ready.";
+    sendHint.hidden = false;
+    return;
+  }
+  if (sendHint.textContent !== defaultSendHintText) {
+    sendHint.textContent = defaultSendHintText;
+    sendHint.hidden = true;
+  }
 }
 
 function setMenuOpen(button, menu, open) {
@@ -205,9 +222,13 @@ function syncChat(chat) {
 }
 
 function setAgentPresence(state) {
+  const wasWorking = agentPresence === "working";
   agentPresence = state === "listening" || state === "working" ? state : "waiting";
   updateSendState();
+  updateQueuedCountHint();
   if (presenceBanner) presenceBanner.hidden = ended || agentPresence !== "waiting";
+
+  if (wasWorking && agentPresence !== "working") flushQueuedOnIdle();
 
   if (agentPresence !== "working") {
     if (workingBubble) workingBubble.remove();
@@ -271,7 +292,7 @@ function requestSnapshot(action) {
 }
 
 function sendQueued(endAfter) {
-  if (ended || agentPresence === "working") return;
+  if (ended) return;
   closeMenus();
 
   const text = chatInput.value.trim();
@@ -290,9 +311,14 @@ function sendQueued(endAfter) {
     }
     return;
   }
-  hideSendHint();
 
   if (endAfter) endAfterSubmit = true;
+
+  if (agentPresence === "working") {
+    updateQueuedCountHint();
+    return;
+  }
+  hideSendHint();
   requestSnapshot("submit");
 }
 
@@ -338,6 +364,18 @@ async function submitQueuedOnce() {
   persistQueuedPrompts();
   render();
   if (agentPresence === "listening") setAgentPresence("working");
+}
+
+function flushQueuedOnIdle() {
+  if (ended || !queued.length) return;
+  if (submitQueuedPromise) {
+    submitQueuedAgain = true;
+    return;
+  }
+  if (pendingFlush) return;
+  pendingFlush = true;
+  hideSendHint();
+  requestSnapshot("submit");
 }
 
 function normalizeLayoutWarningsPayload(value) {
@@ -537,8 +575,9 @@ window.addEventListener("message", (event) => {
     if (snapshotAction === "copy") {
       copyText(msg.snapshot || "");
     } else {
+      pendingFlush = false;
       pendingSnapshot = msg.snapshot || "";
-      submitQueued();
+      if (queued.length) submitQueued();
     }
   }
   if (msg.type === "lavish:scroll") {
