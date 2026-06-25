@@ -479,14 +479,20 @@ test("chrome shows agent working state when a previous poll has released", async
   assert.match(js, /spinner/);
 });
 
-test("chrome disables sending only while working or ended", async () => {
+test("chrome disables sending only when the session has ended", async () => {
   const js = await chromeClientSource();
 
   assert.match(js, /let agentPresence = "waiting"/);
   assert.match(js, /function updateSendState\(\)/);
-  assert.match(js, /sendButton\.disabled = ended \|\| agentPresence === "working"/);
-  assert.match(js, /sendCaret\.disabled = ended \|\| agentPresence === "working"/);
+  assert.match(js, /sendButton\.disabled = ended;/);
+  assert.match(js, /sendCaret\.disabled = ended;/);
+  assert.doesNotMatch(js, /sendButton\.disabled = ended \|\| agentPresence === "working"/);
   assert.doesNotMatch(js, /hasContent/);
+  // composer queues while working and flushes once presence leaves working
+  assert.match(js, /function flushQueuedOnIdle\(\)/);
+  assert.match(js, /function updateQueuedCountHint\(\)/);
+  assert.match(js, /Queued \(/);
+  assert.match(js, /if \(wasWorking && agentPresence !== "working"\) flushQueuedOnIdle\(\)/);
 });
 
 test("sending with an empty composer nudges instead of blocking", async () => {
