@@ -271,39 +271,6 @@
         transition: width 900ms ease 180ms;
       }
 
-      .anatomy {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-      }
-
-      .band {
-        min-width: 0;
-        padding: 12px 12px 14px;
-        border: 1px solid var(--line);
-        border-radius: 4px;
-        background: linear-gradient(180deg, rgba(16, 25, 39, 0.85), rgba(13, 19, 32, 0.92));
-      }
-
-      .band-id {
-        color: var(--faint);
-        font-size: 10px;
-        letter-spacing: 1.2px;
-        text-transform: uppercase;
-        margin-bottom: 6px;
-      }
-
-      .band-title {
-        color: var(--fg);
-        font-size: 12px;
-        margin: 0 0 4px;
-      }
-
-      .band-copy {
-        color: var(--dim);
-        font-size: 12px;
-        margin: 0;
-      }
 
       .state-rail {
         display: flex;
@@ -311,7 +278,7 @@
         gap: 10px;
       }
 
-      .node {
+      .surface-state-pill {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -322,150 +289,6 @@
         background: var(--panel);
       }
 
-      .state-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        flex: 0 0 auto;
-      }
-
-      .state-dot.idle {
-        background: var(--good);
-        box-shadow: 0 0 8px rgba(182, 224, 106, 0.42);
-      }
-
-      .state-dot.work {
-        background: var(--warn);
-        box-shadow: 0 0 8px rgba(255, 207, 106, 0.42);
-      }
-
-      .state-dot.blocked {
-        background: var(--bad);
-        box-shadow: 0 0 8px rgba(240, 113, 120, 0.42);
-      }
-
-      .state-name {
-        color: var(--fg);
-      }
-
-      .state-role {
-        color: var(--dim);
-        font-size: 11px;
-      }
-
-      .reply-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 280px;
-        gap: 16px;
-        align-items: start;
-      }
-
-      .reply-pane,
-      .decision-pane {
-        min-width: 0;
-        padding: 14px;
-        border: 1px solid var(--line);
-        border-radius: 4px;
-        background: var(--panel);
-      }
-
-      .pane-title {
-        color: var(--fg);
-        font-family: var(--sans);
-        font-size: 13px;
-        font-weight: 600;
-        margin: 0 0 6px;
-      }
-
-      .pane-copy {
-        color: var(--dim);
-        font-size: 12px;
-        margin: 0 0 12px;
-      }
-
-      textarea {
-        width: 100%;
-        min-height: 112px;
-        resize: vertical;
-        padding: 12px;
-        border-radius: 4px;
-        border: 1px solid var(--line-strong);
-        background: var(--panel-2);
-        color: var(--fg);
-        outline: none;
-      }
-
-      textarea:focus,
-      .decision-pane input:focus {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 1px rgba(92, 207, 230, 0.25);
-      }
-
-      .actions {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        align-items: center;
-        margin-top: 12px;
-      }
-
-      .btn {
-        min-height: 34px;
-        padding: 0 14px;
-        border-radius: 4px;
-        border: 1px solid var(--line-strong);
-        background: transparent;
-        color: var(--fg);
-      }
-
-      .btn.primary {
-        border-color: rgba(92, 207, 230, 0.4);
-        background: rgba(92, 207, 230, 0.08);
-        color: var(--accent);
-      }
-
-      .btn:hover {
-        border-color: var(--accent);
-      }
-
-      .notice {
-        color: var(--faint);
-        font-size: 12px;
-      }
-
-      .decision-list {
-        display: grid;
-        gap: 8px;
-      }
-
-      .decision-row {
-        display: grid;
-        grid-template-columns: 18px minmax(0, 1fr);
-        gap: 10px;
-        align-items: start;
-        padding: 8px 0;
-        border-top: 1px solid rgba(52, 65, 79, 0.5);
-      }
-
-      .decision-row:first-child {
-        border-top: 0;
-        padding-top: 0;
-      }
-
-      .decision-copy {
-        min-width: 0;
-      }
-
-      .decision-title {
-        color: var(--fg);
-        font-size: 12px;
-        margin-bottom: 3px;
-      }
-
-      .decision-note {
-        color: var(--dim);
-        font-size: 11.5px;
-      }
 
       .foot {
         color: var(--faint);
@@ -474,9 +297,7 @@
       }
 
       @media (max-width: 800px) {
-        .metrics,
-        .anatomy,
-        .reply-grid {
+        .metrics {
           grid-template-columns: 1fr;
         }
 
@@ -499,7 +320,7 @@
     <main class="wrap">
       <header class="shell-head">
         <p class="prompt-rail"><b>~/.lavish</b> <span class="caret">▸</span> surface <span style="color: var(--faint)">one file, terminal-native, review-first</span></p>
-        <h1>Replace this headline with the decision or story the captain should see first</h1>
+        <h1>Replace this headline with the decision, result, or evidence the reader should see first</h1>
         <p class="subtitle">
           Keep the first screen tight: one sentence on what changed, why it matters, and what the reader should inspect.
           This scaffold is meant to feel like a stronger terminal surface, not a slide deck or a generic component gallery.
@@ -572,38 +393,6 @@
         </div>
       </section>
 
-      <hr class="rule" />
-
-      <section aria-labelledby="anatomy-label">
-        <div class="label-row">
-          <p class="label" id="anatomy-label">Surface anatomy</p>
-          <span class="label-note">Explain the page structure with thin bands, not stacked marketing cards.</span>
-        </div>
-        <div class="anatomy">
-          <article class="band">
-            <div class="band-id">01</div>
-            <h2 class="band-title">Prompt rail</h2>
-            <p class="band-copy">Route, actor, or scope. Keep it one line and make it feel terminal-native.</p>
-          </article>
-          <article class="band">
-            <div class="band-id">02</div>
-            <h2 class="band-title">Evidence canvas</h2>
-            <p class="band-copy">Give one bespoke visual that answers the core question before any long explanation.</p>
-          </article>
-          <article class="band">
-            <div class="band-id">03</div>
-            <h2 class="band-title">Status rail</h2>
-            <p class="band-copy">Expose live state, owners, or checkpoints in a compact strip that can survive narrow widths.</p>
-          </article>
-          <article class="band">
-            <div class="band-id">04</div>
-            <h2 class="band-title">Reply pane</h2>
-            <p class="band-copy">Default to text or form submits that work with or without Lavish attached.</p>
-          </article>
-        </div>
-      </section>
-
-      <hr class="rule" />
 
       <section aria-labelledby="state-label">
         <div class="label-row">
@@ -611,111 +400,18 @@
           <span class="label-note">Swap these labels for reviewers, agents, tracks, or rollout states.</span>
         </div>
         <div class="state-rail">
-          <div class="node"><span class="state-dot work"></span><span class="state-name">Main</span><span class="state-role">shipping</span></div>
-          <div class="node"><span class="state-dot idle"></span><span class="state-name">Reviewer</span><span class="state-role">ready</span></div>
-          <div class="node"><span class="state-dot blocked"></span><span class="state-name">Open risk</span><span class="state-role">needs a call</span></div>
-          <div class="node"><span class="state-dot idle"></span><span class="state-name">Legacy path</span><span class="state-role">opt-in only</span></div>
+          <div class="surface-state-pill"><span class="state-dot work"></span><span class="state-name">Owner</span><span class="state-role">in progress</span></div>
+          <div class="surface-state-pill"><span class="state-dot idle"></span><span class="state-name">Review</span><span class="state-role">ready</span></div>
+          <div class="surface-state-pill"><span class="state-dot blocked"></span><span class="state-name">Risk</span><span class="state-role">open</span></div>
+          <div class="surface-state-pill"><span class="state-dot idle"></span><span class="state-name">Fallback</span><span class="state-role">opt-in</span></div>
         </div>
       </section>
 
-      <hr class="rule" />
-
-      <section aria-labelledby="reply-label">
-        <div class="label-row">
-          <p class="label" id="reply-label">Reply</p>
-          <span class="label-note">These controls stay usable when the file is opened directly.</span>
-        </div>
-        <div class="reply-grid">
-          <form class="reply-pane" onsubmit="submitNote(event)">
-            <h2 class="pane-title">Freeform note</h2>
-            <p class="pane-copy">Type what you want the agent to do next. If Lavish is connected, this queues and sends the prompt. If not, the text stays visible so the file is still useful on its own.</p>
-            <textarea name="note" placeholder="Ask for a revision, record a question, or note what to inspect next."></textarea>
-            <div class="actions">
-              <button class="btn primary" type="submit">Send note</button>
-              <span class="notice" id="reply-notice">No prompt sent yet.</span>
-            </div>
-          </form>
-
-          <form class="decision-pane" onsubmit="submitDecision(event)">
-            <h2 class="pane-title">Structured decision</h2>
-            <p class="pane-copy">Use a small radio form for the common path. This is more reliable than custom action buttons.</p>
-            <div class="decision-list">
-              <label class="decision-row">
-                <input type="radio" name="decision" value="ship" />
-                <span class="decision-copy">
-                  <span class="decision-title">Ship this direction</span>
-                  <span class="decision-note">The surface and defaults are ready to become the new path of least resistance.</span>
-                </span>
-              </label>
-              <label class="decision-row">
-                <input type="radio" name="decision" value="revise" />
-                <span class="decision-copy">
-                  <span class="decision-title">Revise the evidence surface</span>
-                  <span class="decision-note">Keep the mechanism, but change the visual argument above the fold.</span>
-                </span>
-              </label>
-              <label class="decision-row">
-                <input type="radio" name="decision" value="hold" />
-                <span class="decision-copy">
-                  <span class="decision-title">Hold for more proof</span>
-                  <span class="decision-note">The page should show clearer numbers or a more grounded live-state view.</span>
-                </span>
-              </label>
-            </div>
-            <div class="actions">
-              <button class="btn" type="submit">Send decision</button>
-              <span class="notice" id="decision-notice">Waiting for a choice.</span>
-            </div>
-          </form>
-        </div>
-      </section>
 
       <p class="foot">self-contained · no CDN · one file · keep the page narrow, intentional, and inspectable</p>
     </main>
 
     <script>
-      function setNotice(id, message) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = message;
-      }
-
-      function sendPrompt(prompt, options, noticeId) {
-        if (!prompt) return false;
-        if (!window.lavish) {
-          setNotice(noticeId, "Lavish is not attached. Open this file with lavish-axi to send feedback.");
-          return false;
-        }
-        window.lavish.queuePrompt(prompt, options);
-        window.lavish.sendQueuedPrompts();
-        setNotice(noticeId, "Queued to Lavish.");
-        return true;
-      }
-
-      function submitNote(event) {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const note = form.elements.note.value.trim();
-        if (!note) {
-          setNotice("reply-notice", "Type a note first.");
-          return;
-        }
-        if (sendPrompt(note, { queueKey: "surface-note" }, "reply-notice")) {
-          form.reset();
-        }
-      }
-
-      function submitDecision(event) {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const selected = form.querySelector('input[name="decision"]:checked');
-        if (!selected) {
-          setNotice("decision-notice", "Choose one path first.");
-          return;
-        }
-        const title = selected.closest(".decision-row").querySelector(".decision-title").textContent.trim();
-        sendPrompt(`Decision: ${title} (${selected.value})`, { queueKey: "surface-decision" }, "decision-notice");
-      }
-
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
           document.querySelectorAll('.spark > i[data-w]').forEach(function (spark) {
@@ -738,18 +434,11 @@ DEFAULT SHAPE:
 1. Prompt rail with route or scope context.
 2. Above-the-fold evidence canvas that tells the story immediately.
 3. Micro-metrics for counts, deltas, or percentages.
-4. Thin anatomy bands for structure, not a gallery of cards.
-5. Live-state rail for owners, agents, or rollout state.
-6. Reply pane with form submits that work with or without Lavish attached.
+4. Live-state rail for owners, reviewers, risks, or rollout state.
 
 EDITING NOTES:
 - Replace the evidence track labels and spans with real proof.
 - Keep the first screen tight. If the story needs depth, add another plotted band, not generic panels.
-- Prefer labels, rules, and tiny state nodes over callouts or ornate chrome.
-- This scaffold intentionally avoids the section-catalog composer and custom action-button patterns.
-
-SEND PATTERNS:
-- submitNote(event) queues a freeform prompt with queueKey "surface-note".
-- submitDecision(event) queues a structured reply with queueKey "surface-decision".
-- Both fall back to an inline notice when window.lavish is absent.
+- Prefer labels, rules, and compact state pills over callouts or ornate chrome.
+- This scaffold intentionally stays review-only. Use chat or browser annotations for feedback instead of an in-page composer.
 -->

@@ -243,17 +243,20 @@ test("surface template has inline CSS with no external links", async () => {
   assert.match(content, /<style>/, "has inline style block");
 });
 
-test("surface template has the new review-surface anatomy", async () => {
+test("surface template keeps the core review surface while staying review-only", async () => {
   const content = await readFile(surfaceTemplatePath, "utf8");
   assert.match(content, /class="prompt-rail"/, "prompt rail");
   assert.match(content, /class="track"/, "evidence track");
   assert.match(content, /class="metrics"/, "micro-metric strip");
-  assert.match(content, /class="anatomy"/, "anatomy band");
   assert.match(content, /class="state-rail"/, "live-state rail");
-  assert.match(content, /<textarea[^>]*name="note"/, "freeform reply");
-  assert.match(content, /<form class="decision-pane"/, "structured decision form");
-  assert.match(content, /window\.lavish/, "lavish interaction");
+  assert.match(content, /class="surface-state-pill"/, "scoped state pill");
+  assert.doesNotMatch(content, /class="anatomy"/, "no rendered anatomy tutorial");
+  assert.doesNotMatch(content, /<form\b/, "no in-page reply forms");
+  assert.doesNotMatch(content, /<textarea\b/, "no freeform composer");
+  assert.doesNotMatch(content, /window\.lavish/, "no default in-page send seam");
   assert.doesNotMatch(content, /data-lavish-action/, "no custom action-button bias");
+  assert.doesNotMatch(content, /\bcaptain\b/i, "no captain-specific rendered copy");
+  assert.doesNotMatch(content, /class="node"/, "no generic mermaid-colliding node class");
 });
 
 test("surface template has overflow guards for the page and evidence track", async () => {
@@ -266,20 +269,16 @@ test("surface template carries an inline edit guide", async () => {
   const content = await readFile(surfaceTemplatePath, "utf8");
   assert.match(content, /SURFACE TEMPLATE - QUICK EDIT GUIDE/, "guide header");
   assert.match(content, /DEFAULT SHAPE:/, "shape reference");
-  assert.match(content, /SEND PATTERNS:/, "interaction guide");
-  assert.match(content, /surface-note/, "queueKey example");
+  assert.match(content, /review-only/, "review-only guidance");
+  assert.match(content, /chat or browser annotations/, "feedback guidance");
 });
 
-test("surface template keeps queueing behind the window.lavish guard", async () => {
+test("surface template removes the default in-page send seam", async () => {
   const content = await readFile(surfaceTemplatePath, "utf8");
-  const guardIndex = content.indexOf("if (!window.lavish)");
-  const queueIndex = content.indexOf("window.lavish.queuePrompt");
-  const sendIndex = content.indexOf("window.lavish.sendQueuedPrompts");
-  assert.ok(guardIndex !== -1, "has window.lavish guard");
-  assert.ok(queueIndex !== -1, "has queuePrompt call");
-  assert.ok(sendIndex !== -1, "has sendQueuedPrompts call");
-  assert.ok(queueIndex > guardIndex, "queueing happens after the guard");
-  assert.ok(sendIndex > queueIndex, "queued prompts are sent after queueing");
+  assert.doesNotMatch(content, /queuePrompt/, "no queuePrompt call");
+  assert.doesNotMatch(content, /sendQueuedPrompts/, "no sendQueuedPrompts call");
+  assert.doesNotMatch(content, /surface-note/, "no fixed freeform queue key");
+  assert.doesNotMatch(content, /surface-decision/, "no in-page decision queue key");
 });
 
 test("surface template has no em dashes", async () => {
