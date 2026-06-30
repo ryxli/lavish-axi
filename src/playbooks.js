@@ -1,8 +1,8 @@
 export const PLAYBOOK_ROUTER_INSTRUCTION =
-  "MUST open each matching playbook before writing HTML. Match against the use_when trigger; one artifact often combines several playbooks.";
+  "Open the playbooks that materially shape the surface. Match against the use_when trigger; one artifact can combine several playbooks, but they are focused guidance, not required overhead for every artifact.";
 
 export const PLAYBOOK_ROUTER_HELP =
-  "One artifact often combines several playbooks (for example a plan that includes a comparison and a diagram), so MUST open each matching playbook before writing HTML.";
+  "One artifact can combine several playbooks (for example a plan plus a comparison and diagram), so open the ones that materially shape the surface instead of treating every playbook as required preflight.";
 
 export const PLAYBOOKS = [
   {
@@ -59,7 +59,7 @@ export const PLAYBOOKS = [
     ],
     lavish_notes: [
       "A Lavish table should make individual rows easy annotation targets.",
-      "If a row implies a follow-up change, include an action control that queues a specific prompt.",
+      "If a row implies a follow-up change, optionally add a control that queues a specific prompt. Otherwise plain annotation is enough.",
     ],
   },
   {
@@ -87,7 +87,7 @@ export const PLAYBOOKS = [
     ],
     lavish_notes: [
       "A Lavish comparison should let the user annotate the exact option or tradeoff they want changed.",
-      "If the goal is selection, provide controls that queue the chosen option with rationale.",
+      "If the goal is selection, add controls that queue the chosen option with rationale. Otherwise annotation alone is enough.",
     ],
   },
   {
@@ -179,7 +179,7 @@ export const PLAYBOOKS = [
   {
     id: "input",
     use_when:
-      "Must be used when the agent needs to collect user input on decisions, choices, preferences, triage, scope, or other structured feedback from within the artifact",
+      "Use this when the agent needs to collect user input on decisions, choices, preferences, triage, scope, or other structured feedback from within the artifact",
     choose: [
       "Use this when the user needs to select, tune, triage, annotate, or edit a structured choice.",
       "Use controls for decisions the user can make faster visually than by writing a prompt.",

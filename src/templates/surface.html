@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Review surface</title>
+    <style>
+      :root {
+        --bg: #0a0e14;
+        --panel: #0d1320;
+        --panel-2: #101927;
+        --line: #18222f;
+        --line-strong: #243142;
+        --fg: #c5d1e0;
+        --dim: #5d6f82;
+        --faint: #34414f;
+        --accent: #5ccfe6;
+        --good: #b6e06a;
+        --warn: #ffcf6a;
+        --bad: #f07178;
+        --violet: #b59cf0;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+        --sans: Inter, "SF Pro Text", "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--mono);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      body {
+        padding: 28px 22px 40px;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+      }
+
+      .prompt-rail {
+        color: var(--dim);
+        font-size: 13px;
+        margin: 0 0 4px;
+      }
+
+      .prompt-rail b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .prompt-rail .caret {
+        color: var(--good);
+      }
+
+      .shell-head {
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        font-family: var(--sans);
+        font-size: 22px;
+        font-weight: 640;
+        letter-spacing: 0.2px;
+        margin: 0 0 4px;
+      }
+
+      .subtitle {
+        color: var(--dim);
+        max-width: 72ch;
+        margin: 0;
+      }
+
+      .rule {
+        height: 1px;
+        background: var(--faint);
+        border: 0;
+        margin: 18px 0;
+        opacity: 0.6;
+      }
+
+      .label-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: baseline;
+        margin: 0 0 12px;
+      }
+
+      .label {
+        color: var(--dim);
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        margin: 0;
+      }
+
+      .label-note {
+        color: var(--faint);
+        font-size: 12px;
+      }
+
+      .evidence {
+        display: grid;
+        gap: 14px;
+      }
+
+      .plot-row {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 14px;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .plot-key {
+        color: var(--dim);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .track {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(20, minmax(0, 1fr));
+        gap: 6px;
+        min-height: 38px;
+        padding: 7px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+
+      .seg {
+        position: relative;
+        min-height: 22px;
+        border-radius: 2px;
+        border: 1px solid transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        font-size: 11px;
+        letter-spacing: 0.15px;
+        padding: 0 6px;
+        min-width: 0;
+      }
+
+      .seg.signal {
+        color: var(--good);
+        background: linear-gradient(90deg, rgba(182, 224, 106, 0.16), rgba(182, 224, 106, 0.05));
+        border-color: rgba(182, 224, 106, 0.28);
+      }
+
+      .seg.attn {
+        color: var(--warn);
+        background: linear-gradient(90deg, rgba(255, 207, 106, 0.15), rgba(255, 207, 106, 0.04));
+        border-color: rgba(255, 207, 106, 0.28);
+      }
+
+      .seg.risk {
+        color: var(--bad);
+        background: repeating-linear-gradient(
+          45deg,
+          rgba(240, 113, 120, 0.12),
+          rgba(240, 113, 120, 0.12) 7px,
+          rgba(240, 113, 120, 0.06) 7px,
+          rgba(240, 113, 120, 0.06) 14px
+        );
+        border-color: rgba(240, 113, 120, 0.24);
+      }
+
+      .seg.context {
+        color: var(--accent);
+        background: linear-gradient(90deg, rgba(92, 207, 230, 0.14), rgba(92, 207, 230, 0.04));
+        border-color: rgba(92, 207, 230, 0.24);
+      }
+
+      .axis {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 14px;
+        align-items: start;
+      }
+
+      .axis-spacer {
+        min-height: 1px;
+      }
+
+      .axis-labels {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        color: var(--faint);
+        font-size: 11px;
+      }
+
+      .axis-labels span {
+        padding-top: 6px;
+        border-top: 1px solid var(--faint);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .metric {
+        min-width: 0;
+      }
+
+      .metric-value {
+        color: var(--accent);
+        font-size: 26px;
+        letter-spacing: 0.3px;
+        line-height: 1.15;
+      }
+
+      .metric-value .was {
+        color: var(--faint);
+        font-size: 15px;
+      }
+
+      .metric-value .arrow {
+        color: var(--dim);
+        font-size: 15px;
+        margin: 0 6px;
+      }
+
+      .metric-name {
+        color: var(--dim);
+        font-size: 11.5px;
+        margin-top: 3px;
+      }
+
+      .spark {
+        height: 4px;
+        border-radius: 999px;
+        background: var(--faint);
+        margin-top: 8px;
+        overflow: hidden;
+      }
+
+      .spark > i {
+        display: block;
+        height: 100%;
+        background: var(--accent);
+        width: 0;
+        transition: width 900ms ease 180ms;
+      }
+
+
+      .state-rail {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .surface-state-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        padding: 7px 11px;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: var(--panel);
+      }
+
+
+      .foot {
+        color: var(--faint);
+        font-size: 11.5px;
+        margin-top: 22px;
+      }
+
+      @media (max-width: 800px) {
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+
+        .plot-row,
+        .axis {
+          grid-template-columns: 1fr;
+        }
+
+        .plot-key {
+          text-align: left;
+        }
+
+        .axis-labels {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="shell-head">
+        <p class="prompt-rail"><b>~/.lavish</b> <span class="caret">▸</span> surface <span style="color: var(--faint)">one file, terminal-native, review-first</span></p>
+        <h1>Replace this headline with the decision, result, or evidence the reader should see first</h1>
+        <p class="subtitle">
+          Keep the first screen tight: one sentence on what changed, why it matters, and what the reader should inspect.
+          This scaffold is meant to feel like a stronger terminal surface, not a slide deck or a generic component gallery.
+        </p>
+      </header>
+
+      <section aria-labelledby="evidence-label">
+        <div class="label-row">
+          <p class="label" id="evidence-label">Evidence canvas</p>
+          <span class="label-note">Replace the labels, proportions, and track names with your real evidence.</span>
+        </div>
+        <div class="evidence">
+          <div class="plot-row">
+            <div class="plot-key">before</div>
+            <div class="track" aria-label="Before evidence track">
+              <div class="seg signal" style="grid-column: span 5">signal</div>
+              <div class="seg risk" style="grid-column: span 8">noise</div>
+              <div class="seg attn" style="grid-column: span 4">decision</div>
+              <div class="seg context" style="grid-column: span 3">context</div>
+            </div>
+          </div>
+          <div class="plot-row">
+            <div class="plot-key">after</div>
+            <div class="track" aria-label="After evidence track">
+              <div class="seg signal" style="grid-column: span 10">signal</div>
+              <div class="seg attn" style="grid-column: span 4">questions</div>
+              <div class="seg context" style="grid-column: span 6">context</div>
+            </div>
+          </div>
+          <div class="axis" aria-hidden="true">
+            <div class="axis-spacer"></div>
+            <div class="axis-labels">
+              <span>context</span>
+              <span>evidence</span>
+              <span>risk</span>
+              <span>ask</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="rule" />
+
+      <section aria-labelledby="metrics-label">
+        <div class="label-row">
+          <p class="label" id="metrics-label">Micro-metrics</p>
+          <span class="label-note">Tiny counts beat paragraphs when the change can be measured.</span>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-value"><span class="was">5</span><span class="arrow">→</span>1</div>
+            <div class="metric-name">screens to scan</div>
+            <div class="spark"><i data-w="20%"></i></div>
+          </div>
+          <div class="metric">
+            <div class="metric-value"><span class="was">1,260</span><span class="arrow">→</span>420</div>
+            <div class="metric-name">bytes above the fold</div>
+            <div class="spark"><i data-w="33%"></i></div>
+          </div>
+          <div class="metric">
+            <div class="metric-value"><span class="was">4</span><span class="arrow">→</span>2</div>
+            <div class="metric-name">open questions</div>
+            <div class="spark"><i data-w="50%"></i></div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">94%</div>
+            <div class="metric-name">space spent on signal</div>
+            <div class="spark"><i data-w="94%"></i></div>
+          </div>
+        </div>
+      </section>
+
+
+      <section aria-labelledby="state-label">
+        <div class="label-row">
+          <p class="label" id="state-label">Live state rail</p>
+          <span class="label-note">Swap these labels for reviewers, agents, tracks, or rollout states.</span>
+        </div>
+        <div class="state-rail">
+          <div class="surface-state-pill"><span class="state-dot work"></span><span class="state-name">Owner</span><span class="state-role">in progress</span></div>
+          <div class="surface-state-pill"><span class="state-dot idle"></span><span class="state-name">Review</span><span class="state-role">ready</span></div>
+          <div class="surface-state-pill"><span class="state-dot blocked"></span><span class="state-name">Risk</span><span class="state-role">open</span></div>
+          <div class="surface-state-pill"><span class="state-dot idle"></span><span class="state-name">Fallback</span><span class="state-role">opt-in</span></div>
+        </div>
+      </section>
+
+
+      <p class="foot">self-contained · no CDN · one file · keep the page narrow, intentional, and inspectable</p>
+    </main>
+
+    <script>
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          document.querySelectorAll('.spark > i[data-w]').forEach(function (spark) {
+            spark.style.width = spark.getAttribute('data-w');
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
+
+<!--
+SURFACE TEMPLATE - QUICK EDIT GUIDE
+
+WHAT THIS IS:
+- A one-file Lavish scaffold that behaves like a strong terminal review surface.
+- The page is self-contained, narrow, and inspectable. Keep it that way.
+
+DEFAULT SHAPE:
+1. Prompt rail with route or scope context.
+2. Above-the-fold evidence canvas that tells the story immediately.
+3. Micro-metrics for counts, deltas, or percentages.
+4. Live-state rail for owners, reviewers, risks, or rollout state.
+
+EDITING NOTES:
+- Replace the evidence track labels and spans with real proof.
+- Keep the first screen tight. If the story needs depth, add another plotted band, not generic panels.
+- Prefer labels, rules, and compact state pills over callouts or ornate chrome.
+- This scaffold intentionally stays review-only. Use chat or browser annotations for feedback instead of an in-page composer.
+-->

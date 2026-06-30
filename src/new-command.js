@@ -6,11 +6,12 @@ import { fileURLToPath } from "node:url";
 import { AxiError } from "axi-sdk-js";
 
 // The default template when `new` is run without --template. This makes
-// "scaffold from a personalized template" the path of least resistance.
-export const DEFAULT_TEMPLATE = "firstmate";
+// "scaffold from a self-contained review surface" the path of least resistance.
+export const DEFAULT_TEMPLATE = "surface";
 
-// Templates are resolved from the bundled dist/templates/ at runtime (composed
-// from src/templates/base.html + sections + concepts at build time). Set
+// Templates are resolved from the bundled dist/templates/ at runtime. The build
+// copies standalone templates there and also composes optional concept presets
+// from src/templates/base.html + sections + concepts. Set
 // LAVISH_AXI_TEMPLATES_DIR to point at a custom template library instead.
 function templatesDir() {
   return process.env.LAVISH_AXI_TEMPLATES_DIR
@@ -22,7 +23,8 @@ export function listKnownTemplates() {
   try {
     return readdirSync(templatesDir())
       .filter((f) => f.endsWith(".html"))
-      .map((f) => f.slice(0, -5));
+      .map((f) => f.slice(0, -5))
+      .sort();
   } catch {
     return [];
   }

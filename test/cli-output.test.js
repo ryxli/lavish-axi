@@ -65,13 +65,13 @@ test("home output teaches agents when and how to use Lavish Editor", () => {
   assert.ok(output.playbooks.some((item) => item.id === "diagram"));
   assert.equal(
     output.playbooks.find((item) => item.id === "input")?.use_when,
-    "Must be used when the agent needs to collect user input on decisions, choices, preferences, triage, scope, or other structured feedback from within the artifact",
+    "Use this when the agent needs to collect user input on decisions, choices, preferences, triage, scope, or other structured feedback from within the artifact",
   );
   assert.ok(output.help.some((item) => item.includes("lavish-axi <html-file>")));
   assert.ok(output.help.some((item) => item.includes("`.lavish/`")));
-  assert.ok(output.help.some((item) => item.includes("lavish-axi playbook <playbook_id>")));
-  assert.ok(output.help.some((item) => item.includes("combines several playbooks")));
-  assert.ok(output.help.some((item) => item.includes("MUST open each matching playbook")));
+  assert.ok(output.help.some((item) => item.includes("default `surface` template")));
+  assert.ok(output.help.some((item) => item.includes("legacy `firstmate` gallery")));
+  assert.ok(output.help.some((item) => item.includes("materially shape the surface")));
   assert.ok(output.help.some((item) => item.includes("reference other filesystem assets")));
   assert.ok(output.help.some((item) => item.includes("same directory as the HTML file")));
   assert.ok(output.help.some((item) => item.includes("does not auto-inject")));
@@ -99,7 +99,7 @@ test("home output teaches agents when and how to use Lavish Editor", () => {
 
 test("home output warns agents that poll is a long poll they must not kill", () => {
   const output = createHomeOutput({ bin: "lavish-axi", sessions: [] });
-  const pollHelp = output.help.find((item) => item.includes("lavish-axi poll <html-file>"));
+  const pollHelp = output.help.find((item) => item.startsWith("Run `lavish-axi poll <html-file>`"));
 
   assert.ok(pollHelp, "home help mentions the poll command");
   assert.match(pollHelp, /long-poll/);
@@ -155,7 +155,7 @@ test("top-level help renders static home output without dynamic sessions", async
 test("design output prints copy-pasteable CDN URLs so agents can opt in to DaisyUI", () => {
   const output = createDesignOutput();
 
-  assert.match(output.playbook_router.instruction, /MUST open each matching playbook before writing HTML/);
+  assert.match(output.playbook_router.instruction, /materially shape the surface/);
   assert.equal(output.playbook_router.playbooks.length, 7);
   assert.equal(
     output.playbook_router.playbooks.find((playbook) => playbook.id === "diagram")?.use_when,
@@ -176,6 +176,7 @@ test("design output prints copy-pasteable CDN URLs so agents can opt in to Daisy
   assert.match(output.design.summary, /no design direction/i);
   assert.match(output.design.summary, /inspect/i);
   assert.match(output.design.summary, /check first/i);
+  assert.match(output.design.summary, /default `surface` scaffold/);
   assert.match(output.design.cdn_snippet, /cdn\.jsdelivr\.net\/npm\/daisyui@/);
   assert.match(output.design.cdn_snippet, /cdn\.jsdelivr\.net\/npm\/daisyui@.*\/themes\.css/);
   assert.match(output.design.cdn_snippet, /cdn\.jsdelivr\.net\/npm\/@tailwindcss\/browser@/);
@@ -224,10 +225,10 @@ test("design output prints copy-pasteable CDN URLs so agents can opt in to Daisy
   assert.ok(output.reference.mockup.notes.some((item) => item.includes("line numbers")));
 });
 
-test("design output recommends luxury as the default theme and warns against @apply on DaisyUI classes", () => {
+test("design output keeps luxury as a fallback theme and warns against @apply on DaisyUI classes", () => {
   const output = createDesignOutput();
-
-  assert.ok(output.theme_usage.some((item) => /default.*luxury|luxury.*default/i.test(item)));
+  assert.ok(output.theme_usage.some((item) => /fallback.*luxury|luxury.*fallback/i.test(item)));
+  assert.ok(output.theme_usage.some((item) => item.includes("`surface` scaffold")));
   assert.ok(output.theme_usage.some((item) => item.includes("@apply") && /daisyui/i.test(item)));
   assert.ok(output.theme_usage.some((item) => /aborts the entire|no Tailwind styles/i.test(item)));
 });
@@ -246,12 +247,12 @@ test("playbook index output lists known playbooks with concise descriptions", ()
   );
   assert.equal(
     output.playbooks.find((playbook) => playbook.id === "input")?.use_when,
-    "Must be used when the agent needs to collect user input on decisions, choices, preferences, triage, scope, or other structured feedback from within the artifact",
+    "Use this when the agent needs to collect user input on decisions, choices, preferences, triage, scope, or other structured feedback from within the artifact",
   );
   assert.ok(output.playbooks.every((playbook) => playbook.use_when.length > 20));
   assert.ok(output.help.some((item) => item.includes("lavish-axi playbook <playbook_id>")));
-  assert.ok(output.help.some((item) => item.includes("combines several playbooks")));
-  assert.ok(output.help.some((item) => item.includes("MUST open each matching playbook")));
+  assert.ok(output.help.some((item) => item.includes("materially shape the surface")));
+  assert.ok(output.help.some((item) => item.includes("required preflight")));
 });
 
 test("diagram playbook names the hand-built flow anti-pattern", () => {
@@ -267,7 +268,7 @@ test("playbook detail output returns focused Lavish-native guidance", () => {
   const output = createPlaybookOutput(["input"]);
 
   assert.equal(output.playbook.id, "input");
-  assert.match(output.playbook.use_when, /Must be used/);
+  assert.match(output.playbook.use_when, /Use this when/);
   assert.match(output.playbook.use_when, /collect user input/);
   assert.ok(output.playbook.choose.some((item) => item.includes("control")));
   assert.ok(output.playbook.structure.some((item) => item.includes("decision")));
