@@ -88,7 +88,7 @@ npm install -g lavish-axi
 lavish-axi setup hooks
 ```
 
-This installs a `SessionStart` hook for **Claude Code**, **Codex**, and **OpenCode** that surfaces open sessions, visualization playbooks, and usage guidance at the start of each session.
+This installs a `SessionStart` hook for **Claude Code**, **Codex**, and **OpenCode** that surfaces open sessions plus the default `new -> open -> poll` workflow, while keeping playbook and design references available when they are actually needed.
 Unlike the skill, the hook also shows your live open sessions, so a fresh agent session can resume an in-flight review.
 **Restart your agent session after running this** so the new hook takes effect.
 
@@ -133,8 +133,8 @@ pnpm link
   Lavish does not inject any design system, so the saved HTML file renders identically whether you open it through `lavish-axi` or directly in a browser.
   Before writing HTML, choose a design system in strict priority order: follow a user-requested look first; otherwise inspect the project the artifact is about - the subject or product whose content or UI it represents, which may differ from your current working directory - and match that project's Tailwind or theme config, CSS variables or design tokens, component library, brand assets, or existing styled pages.
   If the artifact previews, proposes, or mocks a specific app's UI, render it in that app's own design system so it faithfully shows the product, even when you are running in a different repo.
-  Only when both come up empty, run `lavish-axi design` for a copy-pasteable Tailwind CSS v4 + DaisyUI v5 CDN fallback, a content-to-playbook router, and Mermaid diagram tooling.
-  That fallback guidance recommends DaisyUI's `luxury` theme by default, warns not to `@apply` DaisyUI classes inside Tailwind browser-runtime style blocks, includes an optional layout safety CSS snippet for dense nested grid/flex layouts, and provides a pinned Mermaid CDN snippet with initialization for flows, architecture, state, and sequence diagrams.
+  Only when both come up empty, run `lavish-axi design` for the Tailwind CSS v4 + DaisyUI v5 CDN fallback, a content-to-playbook router, and Mermaid diagram tooling.
+  That fallback output keeps DaisyUI's `luxury` theme as a demo option, warns not to `@apply` DaisyUI classes inside Tailwind browser-runtime style blocks, includes an optional layout safety CSS snippet for dense nested grid/flex layouts, and provides a pinned Mermaid CDN snippet with initialization for flows, architecture, state, and sequence diagrams.
 - **Open-time layout gate** - The browser chrome masks each artifact until the real in-iframe layout audit reports no error-severity findings.
   Warning-only artifacts reveal normally; error findings notify the agent through the same `layout_warnings` poll path and keep the curtain up until a clean reload.
   The user can click **Show anyway**, and a bounded safety timeout reveals with a persistent layout-issues banner so review is never blocked indefinitely.
@@ -164,17 +164,17 @@ pnpm link
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lavish-axi`                         | Show current sessions and usage guidance.                                                                                                                                                       |
 | `lavish-axi <html-file>`             | Open or resume a Lavish Editor session, with the open-time layout gate enabled by default.                                                                                                      |
-| `lavish-axi new [--template <name>]` | Scaffold a concept-preset artifact into `.lavish/<name>.html` or an optional output path; available concepts: `firstmate` (default - full gallery), `plan`, `comparison`, `report`, `decision`. |
-| `lavish-axi poll <html-file>`        | Long-poll until the user sends feedback, ends the session, or the browser reports fresh `layout_warnings`; leave no-timeout polls running, or re-run them if interrupted.                       |
-| `lavish-axi end <html-file>`         | End a session.                                                                                                                                                                                  |
-| `lavish-axi stop`                    | Shut down the background server.                                                                                                                                                                |
-| `lavish-axi playbook [id]`           | List focused artifact guidance or show one playbook; agents must open each matching playbook before writing HTML.                                                                               |
-| `lavish-axi design`                  | Show the Tailwind + DaisyUI CDN fallback, content-to-playbook router, Mermaid diagram tooling, `luxury` default theme, DaisyUI `@apply` warning, and layout safety snippet.                     |
+| `lavish-axi new [--template <name>]` | Scaffold a self-contained review surface into `.lavish/<name>.html` or an optional output path; default template: `surface`. Other concepts include `plan`, `comparison`, `report`, `decision`, plus the legacy `firstmate` gallery. |
+| `lavish-axi poll <html-file>`        | Long-poll until the user sends feedback, ends the session, or the browser reports fresh `layout_warnings`; leave no-timeout polls running, or re-run them if interrupted.                                                         |
+| `lavish-axi end <html-file>`         | End a session.                                                                                                                                                                                                    |
+| `lavish-axi stop`                    | Shut down the background server.                                                                                                                                                                                  |
+| `lavish-axi playbook [id]`           | List focused artifact guidance or show one playbook; use it when a surface needs a richer pattern or interaction model, not as mandatory preflight for every artifact.                      |
+| `lavish-axi design`                  | Show the Tailwind + DaisyUI CDN fallback, content-to-playbook router, Mermaid diagram tooling, fallback `luxury` demo theme, DaisyUI `@apply` warning, and layout safety snippet.           |
 | `lavish-axi setup hooks`             | Install or repair optional SessionStart hooks for Claude Code, Codex, and OpenCode; restart the agent session afterward.                                                                        |
 | `lavish-axi server`                  | Run the local Lavish Editor server.                                                                                                                                                             |
 
 Known playbook IDs: `diagram`, `table`, `comparison`, `plan`, `code`, `input`, `slides`.
-One artifact often combines several playbooks, such as a plan that includes a comparison and a diagram, so agents must match against each `use_when` trigger and open every matching playbook before writing HTML.
+One artifact can combine several playbooks, such as a plan plus a comparison and diagram, so open the ones that materially shape the surface instead of treating every playbook as required preflight.
 For flows, architecture, state, or sequence diagrams, open the diagram playbook and use the Mermaid tooling from `lavish-axi design` unless SVG is needed for richly annotated nodes; avoid hand-built div/flexbox boxes-and-arrows.
 
 ### Flags
@@ -183,7 +183,7 @@ For flows, architecture, state, or sequence diagrams, open the diagram playbook 
 | ------------------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lavish-axi <html-file>` | `--no-open`           | Ensure the server/session exists without opening another browser window.                                                                                                                                                            |
 | `lavish-axi <html-file>` | `--no-gate`           | Skip the open-time layout curtain for this browser open.                                                                                                                                                                            |
-| `lavish-axi new`         | `--template <name>`   | Choose the built-in template to scaffold; defaults to `firstmate`. Run `lavish-axi new --help` to list available templates.                                                                                                         |
+| `lavish-axi new`         | `--template <name>`   | Choose the built-in template to scaffold; defaults to `surface`. The legacy concept presets below are explicit fallback options when a task type fits them better. Run `lavish-axi new --help` to list available templates.                                                                                                         |
 | `lavish-axi poll`        | `--agent-reply "..."` | Show the agent's reply in the existing browser chat before polling again.                                                                                                                                                           |
 | `lavish-axi poll`        | `--timeout-ms <ms>`   | Test/debug escape hatch only; agents should normally omit it and leave the long poll running.                                                                                                                                       |
 | `lavish-axi stop`        | `--port <port>`       | Shut down a server running on a non-default port.                                                                                                                                                                                   |
@@ -191,19 +191,22 @@ For flows, architecture, state, or sequence diagrams, open the diagram playbook 
 
 ### Templates and sections
 
-`lavish-axi new --template <concept>` scaffolds a curated starting point - a subset of sections chosen for the task type.
+`lavish-axi new --template <concept>` scaffolds a legacy concept preset, not the default path.
+The normal starting point is the default `surface` scaffold.
+Use the concept presets below only when one of them is a better fit for the task.
 
-Available concept presets:
+Available legacy concept presets:
 
-| Concept      | Sections included                              |
-| ------------ | ---------------------------------------------- |
-| `firstmate`  | Full gallery of all 10 sections - the default  |
-| `plan`       | hero, verdict, timeline, cards, actions        |
-| `comparison` | hero, comparison-table, verdict, decision-form |
-| `report`     | hero, verdict, metric-grid, cards, code-block  |
-| `decision`   | hero, verdict, callout, decision-form, actions |
+| Concept      | Sections included                                   |
+| ------------ | --------------------------------------------------- |
+| `firstmate`  | Full gallery of all 10 sections - explicit opt-in  |
+| `plan`       | hero, verdict, timeline, cards, actions             |
+| `comparison` | hero, comparison-table, verdict, decision-form      |
+| `report`     | hero, verdict, metric-grid, cards, code-block       |
+| `decision`   | hero, verdict, callout, decision-form, actions      |
 
-Every concept is built from the shared **section catalog** - 10 self-contained blocks, each delimited by `<!-- ==SECTION:name== -->` ... `<!-- ==/SECTION:name== -->`:
+The shared section catalog is the reusable block library behind those legacy presets.
+It contains 10 self-contained blocks, each delimited by `<!-- ==SECTION:name== -->` ... `<!-- ==/SECTION:name== -->`:
 
 | Section            | Purpose                                                        |
 | ------------------ | -------------------------------------------------------------- |

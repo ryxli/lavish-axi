@@ -26,11 +26,19 @@ await copyFile("src/chrome-client.js", "dist/chrome-client.js");
 await copyFile("src/chrome.css", "dist/chrome.css");
 await mkdir("dist/templates", { recursive: true });
 
-// Compose concept templates from a shared base + section partials, so one naval
-// design can be mutated into many task concepts. Each concepts/<name>.json lists
-// the ordered sections injected at the base's <!-- ==LAVISH:SECTIONS== --> marker.
 const templatesDir = new URL("../src/templates/", import.meta.url);
 const distTemplatesDir = new URL("../dist/templates/", import.meta.url);
+
+// Copy standalone review surfaces verbatim. These are the direct scaffold path
+// for `lavish-axi new` and intentionally do not flow through the concept composer.
+const standaloneTemplateFiles = (await readdir(templatesDir)).filter((f) => f.endsWith(".html") && f !== "base.html");
+for (const file of standaloneTemplateFiles) {
+  await copyFile(new URL(file, templatesDir), new URL(file, distTemplatesDir));
+}
+
+// Compose optional concept presets from the shared base + section partials. Each
+// concepts/<name>.json lists the ordered sections injected at the
+// <!-- ==LAVISH:SECTIONS== --> marker.
 const base = await readFile(new URL("base.html", templatesDir), "utf8");
 const sectionPlaceholder = /^[ \t]*<!-- ==LAVISH:SECTIONS== -->[ \t]*$/m;
 if (!sectionPlaceholder.test(base)) {

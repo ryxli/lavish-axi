@@ -8,16 +8,23 @@ import test from "node:test";
 
 import { listKnownTemplates, newCommand } from "../src/new-command.js";
 
-// Resolve templates from the composed dist output (built before `node --test`).
+// Resolve templates from the built dist output.
 const distTemplates = new URL("../dist/templates/", import.meta.url);
 process.env.LAVISH_AXI_TEMPLATES_DIR = fileURLToPath(distTemplates);
 
+const templatesDir = new URL("../src/templates/", import.meta.url);
 const conceptsDir = new URL("../src/templates/concepts/", import.meta.url);
 const sectionsDir = new URL("../src/templates/sections/", import.meta.url);
 
 async function conceptNames() {
   return (await readdir(conceptsDir)).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5));
 }
+
+test("standalone surface template is copied verbatim into dist/templates", async () => {
+  const src = await readFile(new URL("surface.html", templatesDir), "utf8");
+  const dist = await readFile(new URL("surface.html", distTemplates), "utf8");
+  assert.equal(dist, src);
+});
 
 test("every concept composes its manifest sections, in order", async () => {
   const concepts = await conceptNames();
@@ -36,8 +43,6 @@ test("every concept composes its manifest sections, in order", async () => {
 });
 
 test("composed templates embed every section's CSS so any block can be pasted in later", async () => {
-  // report omits timeline/callout/decision-form/actions sections, but a mutating
-  // agent must be able to paste any of them in, so their CSS must still ship.
   const report = await readFile(new URL("report.html", distTemplates), "utf8");
   assert.doesNotMatch(report, /==SECTION:timeline==/, "report does not include the timeline block");
   for (const cls of [".timeline", ".callout", ".metric-grid", ".form-card", ".actions-row", ".verdict"]) {
@@ -45,7 +50,7 @@ test("composed templates embed every section's CSS so any block can be pasted in
   }
 });
 
-test("newCommand scaffolds each concept preset", async () => {
+test("newCommand scaffolds legacy concept presets when explicitly requested", async () => {
   for (const concept of ["firstmate", "plan", "comparison", "report", "decision"]) {
     const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-concept-"));
     const origCwd = process.cwd();
@@ -61,19 +66,21 @@ test("newCommand scaffolds each concept preset", async () => {
   }
 });
 
-test("listKnownTemplates exposes the concept presets", async () => {
+test("listKnownTemplates exposes surface plus the concept presets", async () => {
   const known = listKnownTemplates();
+  assert.ok(known.includes("surface"), 'listKnownTemplates includes "surface"');
   for (const concept of await conceptNames()) {
     assert.ok(known.includes(concept), `listKnownTemplates includes "${concept}"`);
   }
 });
 
-test("base.html exposes the sections placeholder and the monolithic template is gone", async () => {
-  const base = await readFile(new URL("../src/templates/base.html", import.meta.url), "utf8");
+test("base placeholder remains for concepts while surface is a standalone source template", async () => {
+  const base = await readFile(new URL("base.html", templatesDir), "utf8");
   assert.match(base, /<!-- ==LAVISH:SECTIONS== -->/, "base has the sections placeholder");
+  assert.ok(existsSync(fileURLToPath(new URL("surface.html", templatesDir))), "surface standalone source exists");
   assert.ok(
-    !existsSync(fileURLToPath(new URL("../src/templates/firstmate.html", import.meta.url))),
-    "no monolithic source template remains",
+    !existsSync(fileURLToPath(new URL("firstmate.html", templatesDir))),
+    "legacy concepts remain composed-only source templates",
   );
 });
 
