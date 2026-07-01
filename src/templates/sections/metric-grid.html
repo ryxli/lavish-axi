@@ -1,24 +1,22 @@
-<!-- ==SECTION:metric-grid== use for: dashboards, KPIs, test counts, before/after numbers -->
-<p class="section-heading"><!-- HEADING: e.g. "Test Results" --></p>
-<div class="metric-grid">
-  <!-- Tile pattern: big metric-value, uppercase metric-label, optional metric-delta. -->
-  <div class="metric-tile">
-    <!-- VALUE: the headline number -->
-    <div class="metric-value">248</div>
-    <!-- LABEL: short uppercase caption -->
-    <div class="metric-label">Tests passing</div>
-    <!-- DELTA (optional): metric-delta--good for gains, metric-delta--warn for caution -->
-    <div class="metric-delta metric-delta--good">+12 since last run</div>
+<!-- ==SECTION:metric-grid== use for: dashboards, KPIs, before/after counts, and signal-dense report headers -->
+<section class="section">
+  <p class="section-heading"><!-- HEADING: e.g. Current signal --></p>
+  <div class="metric-grid">
+    <div class="metric-tile">
+      <div class="metric-value">248</div>
+      <div class="metric-label">Tests passing</div>
+      <div class="metric-delta metric-delta--good">+12 since last run</div>
+    </div>
+    <div class="metric-tile">
+      <div class="metric-value">3</div>
+      <div class="metric-label">Open regressions</div>
+      <div class="metric-delta metric-delta--warn">2 still need triage</div>
+    </div>
+    <div class="metric-tile is-key">
+      <div class="metric-value">94%</div>
+      <div class="metric-label">Coverage</div>
+      <!-- omit metric-delta when there is no change to call out -->
+    </div>
   </div>
-  <div class="metric-tile">
-    <div class="metric-value">3</div>
-    <div class="metric-label">Open regressions</div>
-    <div class="metric-delta metric-delta--warn">+2 to triage</div>
-  </div>
-  <div class="metric-tile">
-    <div class="metric-value">94%</div>
-    <div class="metric-label">Coverage</div>
-    <!-- omit the metric-delta line entirely when a tile has no change to show -->
-  </div>
-</div>
+</section>
 <!-- ==/SECTION:metric-grid== -->

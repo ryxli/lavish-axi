@@ -1,4 +1,5 @@
 {
   "title": "Comparison",
-  "sections": ["hero", "comparison-table", "verdict", "decision-form"]
+  "treatment": "operations-desk",
+  "sections": ["hero", "comparison-table", "metric-grid", "verdict", "decision-form"]
 }

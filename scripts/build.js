@@ -26,19 +26,12 @@ await copyFile("src/chrome-client.js", "dist/chrome-client.js");
 await copyFile("src/chrome.css", "dist/chrome.css");
 await mkdir("dist/templates", { recursive: true });
 
+// Compose concept templates from a shared base + section partials, so one
+// Lavish brand foundation can lead with different treatments by artifact type.
+// Each concepts/<name>.json lists the ordered sections injected at the base's
+// <!-- ==LAVISH:SECTIONS== --> marker and may also declare a treatment.
 const templatesDir = new URL("../src/templates/", import.meta.url);
 const distTemplatesDir = new URL("../dist/templates/", import.meta.url);
-
-// Copy standalone review surfaces verbatim. These are the direct scaffold path
-// for `lavish-axi new` and intentionally do not flow through the concept composer.
-const standaloneTemplateFiles = (await readdir(templatesDir)).filter((f) => f.endsWith(".html") && f !== "base.html");
-for (const file of standaloneTemplateFiles) {
-  await copyFile(new URL(file, templatesDir), new URL(file, distTemplatesDir));
-}
-
-// Compose optional concept presets from the shared base + section partials. Each
-// concepts/<name>.json lists the ordered sections injected at the
-// <!-- ==LAVISH:SECTIONS== --> marker.
 const base = await readFile(new URL("base.html", templatesDir), "utf8");
 const sectionPlaceholder = /^[ \t]*<!-- ==LAVISH:SECTIONS== -->[ \t]*$/m;
 if (!sectionPlaceholder.test(base)) {
@@ -54,7 +47,9 @@ for (const file of conceptFiles) {
   }
   const composed = base
     .replace(sectionPlaceholder, blocks.join("\n\n"))
-    .replace("<!-- TITLE: replace me -->", manifest.title ?? "Lavish artifact");
+    .replace("<!-- TITLE: replace me -->", manifest.title ?? "Lavish artifact")
+    .replaceAll("__LAVISH_TEMPLATE__", concept)
+    .replaceAll("__LAVISH_TREATMENT__", manifest.treatment ?? concept);
   await writeFile(new URL(`${concept}.html`, distTemplatesDir), composed, "utf8");
 }
 await mkdir("dist/design", { recursive: true });

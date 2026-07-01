@@ -1,4 +1,5 @@
 {
   "title": "Decision",
+  "treatment": "reading-room",
   "sections": ["hero", "verdict", "callout", "decision-form", "actions"]
 }
