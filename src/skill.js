@@ -61,7 +61,7 @@ ${home.help[home.help.length - 1]}
 
 ## Workflow
 
-1. Start from the default surface scaffold instead of hand-writing boilerplate: \`npx -y lavish-axi new [--template <name>] [output-path]\` writes \`.lavish/<name>.html\` from the default \`surface\` template, a self-contained review surface with inline styling, overflow guards, and all \`window.lavish\` interaction JS already baked in. Replace the placeholder content in \`<main>\`, then move straight into \`npx -y lavish-axi <html-file>\` and \`npx -y lavish-axi poll <html-file>\`. Reach for \`plan\`, \`comparison\`, \`report\`, \`decision\`, or the legacy \`firstmate\` gallery only when that preset genuinely fits better.
+1. Start from a template instead of hand-writing boilerplate: \`npx -y lavish-axi new [--template <name>] [output-path]\` writes a ready artifact to \`.lavish/<name>.html\` (default template \`firstmate\`: the Lavish brand foundation, inline CSS plus a font import, overflow guards, and all window.lavish interaction JS already baked in). Each preset leads with a treatment that matches the artifact type while keeping the shared foundation. Replace the placeholder content in \`<main>\` and skip re-deriving theme/CSS/JS. Only hand-author from scratch when the user wants a custom design the templates do not cover.
 2. Run \`npx -y lavish-axi <html-file>\` to open or resume a review session in the browser.
 3. Run \`npx -y lavish-axi poll <html-file>\` to long-poll for the user's annotations, queued prompts, and browser-reported \`layout_warnings\`.
    The poll stays silent until the user acts or the real browser reports fresh layout warnings - leave it running, never kill it.
@@ -76,7 +76,7 @@ ${bullets(home.visual_guidance)}
 
 ## Playbooks
 
-Run \`npx -y lavish-axi playbook <id>\` for focused guidance when a surface needs a richer pattern, interaction model, or second pass on structure.
+Run \`npx -y lavish-axi playbook <id>\` for focused, detailed guidance on any of these.
 ${PLAYBOOK_ROUTER_HELP}
 For flows, architecture, state, or sequence diagrams, do not hand-build boxes-and-arrows from div/flexbox; open the diagram playbook and use Mermaid unless SVG is needed for richly annotated nodes.
 

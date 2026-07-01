@@ -1,4 +1,5 @@
 {
   "title": "Plan",
-  "sections": ["hero", "verdict", "timeline", "cards", "actions"]
+  "treatment": "causal-diagram",
+  "sections": ["hero", "timeline", "verdict", "cards", "callout", "actions"]
 }
