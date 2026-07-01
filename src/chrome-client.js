@@ -82,6 +82,78 @@ function escapeHtml(value) {
   );
 }
 
+function formatInlineChat(text) {
+  const codeSnippets = [];
+  let html = escapeHtml(text).replace(/`([^`\n]+)`/g, (_, code) => {
+    const token = "__LAVISH_CODE_" + codeSnippets.length + "__";
+    codeSnippets.push("<code>" + code + "</code>");
+    return token;
+  });
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  return html.replace(/__LAVISH_CODE_(\d+)__/g, (_, index) => codeSnippets[Number(index)] || "");
+}
+
+function isUnorderedListLine(line) {
+  return /^\s*[-*]\s+/.test(line);
+}
+
+function isOrderedListLine(line) {
+  return /^\s*\d+\.\s+/.test(line);
+}
+
+function renderListBlock(lines, ordered) {
+  const tag = ordered ? "ol" : "ul";
+  const pattern = ordered ? /^\s*\d+\.\s+/ : /^\s*[-*]\s+/;
+  return (
+    "<" +
+    tag +
+    ">" +
+    lines.map((line) => "<li>" + formatInlineChat(line.replace(pattern, "")) + "</li>").join("") +
+    "</" +
+    tag +
+    ">"
+  );
+}
+
+function renderChatText(text) {
+  const lines = String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
+  const blocks = [];
+  let index = 0;
+  while (index < lines.length) {
+    while (index < lines.length && lines[index].trim() === "") index++;
+    if (index >= lines.length) break;
+
+    const ordered = isOrderedListLine(lines[index]);
+    const unordered = !ordered && isUnorderedListLine(lines[index]);
+    if (ordered || unordered) {
+      const matcher = ordered ? isOrderedListLine : isUnorderedListLine;
+      const listLines = [];
+      while (index < lines.length && matcher(lines[index])) {
+        listLines.push(lines[index]);
+        index++;
+      }
+      blocks.push(renderListBlock(listLines, ordered));
+      continue;
+    }
+
+    const paragraphLines = [];
+    while (
+      index < lines.length &&
+      lines[index].trim() !== "" &&
+      !isUnorderedListLine(lines[index]) &&
+      !isOrderedListLine(lines[index])
+    ) {
+      paragraphLines.push(formatInlineChat(lines[index]));
+      index++;
+    }
+    blocks.push("<p>" + paragraphLines.join("<br>") + "</p>");
+  }
+
+  return blocks.join("");
+}
+
 function loadQueuedPrompts() {
   try {
     const parsed = JSON.parse(sessionStorage.getItem(queueStorageKey) || "[]");
@@ -206,7 +278,12 @@ function addChat(role, text) {
 
   const el = document.createElement("div");
   el.className = "bubble " + role;
-  el.innerHTML = "<small>" + (role === "agent" ? "Agent" : "You") + "</small><div>" + escapeHtml(text) + "</div>";
+  el.innerHTML =
+    "<small>" +
+    (role === "agent" ? "Agent" : "You") +
+    '</small><div class="bubble-body">' +
+    renderChatText(text) +
+    "</div>";
   chatLog.appendChild(el);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
@@ -314,10 +391,6 @@ function sendQueued(endAfter) {
 
   if (endAfter) endAfterSubmit = true;
 
-  if (agentPresence === "working") {
-    updateQueuedCountHint();
-    return;
-  }
   hideSendHint();
   requestSnapshot("submit");
 }

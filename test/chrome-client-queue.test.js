@@ -61,6 +61,7 @@ async function createChromeHarness({
       scrollTop: 0,
       scrollHeight: 0,
       dataset: {},
+      children: [],
       classList: {
         add(...names) {
           for (const name of names) classes.add(name);
@@ -93,9 +94,16 @@ async function createChromeHarness({
       },
       appendChild(child) {
         child.parentElement = this;
+        this.children.push(child);
         return child;
       },
-      remove() {},
+      remove() {
+        if (!this.parentElement) return;
+        const siblings = this.parentElement.children || [];
+        const index = siblings.indexOf(this);
+        if (index != -1) siblings.splice(index, 1);
+        this.parentElement = null;
+      },
       focus() {
         this.focused = true;
       },
@@ -481,7 +489,7 @@ function snapshotRequestCount(chrome) {
   return chrome.postedToFrame.filter((m) => m.type === "lavish:requestSnapshot").length;
 }
 
-test("composer queues while the agent is working and never posts", async () => {
+test("composer can submit while the agent is working", async () => {
   const posts = [];
   const chrome = await createChromeHarness({
     fetchImpl: async (url, init) => {
@@ -499,24 +507,21 @@ test("composer queues while the agent is working and never posts", async () => {
 
   chrome.element("chatInput").value = "first message";
   chrome.element("send").onclick();
-  chrome.element("chatInput").value = "second message";
-  chrome.element("send").onclick();
+  assert.equal(snapshotRequestCount(chrome), 1, "send still snapshots while working");
+
+  chrome.sendFrameMessage({ type: "lavish:snapshot", snapshot: "uid=1 body" });
   await flushPromises();
 
-  assert.equal(posts.length, 0, "nothing posts while working");
-  assert.equal(snapshotRequestCount(chrome), 0, "no snapshot requested while working");
+  assert.equal(posts.length, 1, "message posts immediately instead of waiting for a new poll");
+  assert.equal(posts[0].url, "/api/abc/prompts");
   assert.deepEqual(
-    chrome.queued().map((prompt) => prompt.prompt),
-    ["first message", "second message"],
+    posts[0].body.prompts.map((prompt) => prompt.prompt),
+    ["first message"],
   );
-
-  // queued count visible by reusing the send hint node
-  const hint = chrome.element("sendHint");
-  assert.equal(hint.hidden, false);
-  assert.match(hint.textContent, /Queued \(2\)/);
+  assert.equal(chrome.queued().length, 0);
 });
 
-test("queued prompts flush exactly once when presence leaves working", async () => {
+test("queued one-click prompts flush exactly once when presence leaves working", async () => {
   const posts = [];
   const chrome = await createChromeHarness({
     fetchImpl: async (url, init) => {
@@ -526,10 +531,14 @@ test("queued prompts flush exactly once when presence leaves working", async () 
   });
 
   sendPresence(chrome, "working");
-  chrome.element("chatInput").value = "first message";
-  chrome.element("send").onclick();
-  chrome.element("chatInput").value = "second message";
-  chrome.element("send").onclick();
+  chrome.sendFrameMessage({
+    type: "lavish:queuePrompt",
+    prompt: { prompt: "Use plan A", selector: "button#plan-a", tag: "choice", text: "Plan A" },
+  });
+  chrome.sendFrameMessage({
+    type: "lavish:queuePrompt",
+    prompt: { prompt: "Use plan B", selector: "button#plan-b", tag: "choice", text: "Plan B" },
+  });
   assert.equal(posts.length, 0);
 
   // presence leaves working -> exactly one snapshot request
@@ -551,7 +560,7 @@ test("queued prompts flush exactly once when presence leaves working", async () 
   assert.equal(posts[0].url, "/api/abc/prompts");
   assert.deepEqual(
     posts[0].body.prompts.map((prompt) => prompt.prompt),
-    ["first message", "second message"],
+    ["Use plan A", "Use plan B"],
   );
   assert.equal(chrome.queued().length, 0);
 });
@@ -585,4 +594,24 @@ test("data-lavish-action queue prompts flush once the agent goes idle", async ()
     ["Approve plan"],
   );
   assert.equal(chrome.queued().length, 0);
+});
+
+test("agent replies keep paragraph breaks and basic markdown structure", async () => {
+  const chrome = await createChromeHarness();
+  const handler = chrome.eventSource().listeners.get("agent-reply");
+  assert.ok(handler, "agent-reply listener registered");
+
+  handler({
+    data: JSON.stringify({
+      text: "First paragraph\n\n- bullet one\n- bullet two\n\n**Bold** and `code`",
+    }),
+  });
+
+  const bubble = chrome.element("chatLog").children.at(-1);
+  assert.ok(bubble, "agent reply bubble appended");
+  assert.match(bubble.innerHTML, /class="bubble-body"/);
+  assert.match(bubble.innerHTML, /<p>First paragraph<\/p>/);
+  assert.match(bubble.innerHTML, /<ul><li>bullet one<\/li><li>bullet two<\/li><\/ul>/);
+  assert.match(bubble.innerHTML, /<strong>Bold<\/strong>/);
+  assert.match(bubble.innerHTML, /<code>code<\/code>/);
 });

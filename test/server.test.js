@@ -284,7 +284,7 @@ test("chrome declares the Lavish design-system tokens", async () => {
   assert.match(css, /--ease:cubic-bezier\(.2,.6,.2,1\)/);
   assert.match(css, /--dur-slow:320ms/);
   assert.match(css, /--bar-h:56px/);
-  assert.match(css, /--panel-w:360px/);
+  assert.match(css, /--panel-w:clamp\(360px,31vw,480px\)/);
 });
 
 test("artifact SDK uses design-token aliases for annotation highlight and shadow UI", () => {
@@ -420,13 +420,16 @@ test("chrome centers the top bar row while bottom-aligning the identity cluster"
   assert.match(css, /\.brand\{[^}]*align-items:flex-end/);
 });
 
-test("chrome chat bubbles follow the preview mock shades", async () => {
+test("chrome chat bubbles follow the preview mock shades and give agent replies more room", async () => {
   const css = await chromeCssSource();
 
   assert.match(css, /\.bubble\.user\{[^}]*background:var\(--bg-elevated\)/);
   assert.match(css, /\.bubble\.user\{[^}]*border-color:var\(--border-strong\)/);
   assert.match(css, /\.bubble\.agent\{[^}]*background:transparent/);
   assert.match(css, /\.bubble\.agent\{[^}]*border-color:var\(--border-subtle\)/);
+  assert.match(css, /\.bubble\.agent\{[^}]*max-width:100%/);
+  assert.match(css, /\.bubble-body\{[^}]*line-height:1\.58/);
+  assert.match(css, /\.bubble-body code\{[^}]*font-family:var\(--font-mono\)/);
   assert.match(css, /border-top-color:var\(--accent\)/);
 });
 
@@ -438,13 +441,15 @@ test("chrome queued-prompt pills use the preview mock steel treatment", async ()
   assert.doesNotMatch(css, /\.pill\{[^}]*var\(--amber/);
 });
 
-test("chrome includes a chat-like prompt composer and agent reply listener", async () => {
+test("chrome includes a chat-like prompt composer and readable agent reply rendering", async () => {
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
   const js = await chromeClientSource();
 
   assert.match(html, /id="chatLog"/);
   assert.match(html, /id="chatInput"/);
   assert.match(js, /agent-reply/);
+  assert.match(js, /function renderChatText\(/);
+  assert.match(js, /class="bubble-body"/);
 });
 
 test("chrome bootstraps persisted chat history so missed replies still appear", () => {
@@ -487,8 +492,9 @@ test("chrome disables sending only when the session has ended", async () => {
   assert.match(js, /sendButton\.disabled = ended;/);
   assert.match(js, /sendCaret\.disabled = ended;/);
   assert.doesNotMatch(js, /sendButton\.disabled = ended \|\| agentPresence === "working"/);
+  assert.doesNotMatch(js, /if \(agentPresence === "working"\) \{/);
   assert.doesNotMatch(js, /hasContent/);
-  // composer queues while working and flushes once presence leaves working
+  // send stays live while working; background auto-flush still exists for one-click actions.
   assert.match(js, /function flushQueuedOnIdle\(\)/);
   assert.match(js, /function updateQueuedCountHint\(\)/);
   assert.match(js, /Queued \(/);
@@ -517,6 +523,12 @@ test("composer send is a split button with a send-and-end option", async () => {
   assert.match(html, /id="sendAndEnd"[^<]*>.*Send &amp; end session/);
   assert.match(css, /\.send-main\{[^}]*border-radius:var\(--radius-md\) 0 0 var\(--radius-md\)/);
   assert.match(css, /\.send-caret\{[^}]*border-left:1px solid rgba\(23,19,10,.22\)/);
+});
+
+test("chrome widens the conversation panel beyond a fixed 360px column on larger screens", async () => {
+  const css = await chromeCssSource();
+
+  assert.match(css, /--panel-w:clamp\(360px,31vw,480px\)/);
 });
 
 test("send and end submits queued prompts before ending the session", async () => {

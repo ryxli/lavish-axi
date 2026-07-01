@@ -96,7 +96,7 @@
   --shadow-tooltip: 0 16px 44px rgba(0, 0, 0, 0.35);
   --shadow-floating: 0 20px 70px rgba(0, 0, 0, 0.35);
   --bar-h: 56px;
-  --panel-w: 360px;
+  --panel-w: clamp(360px, 31vw, 480px);
   --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
   --dur-fast: 120ms;
   --dur: 180ms;
@@ -463,12 +463,13 @@ body.lavish {
   gap: 10px;
 }
 .bubble {
-  max-width: 85%;
+  max-width: 92%;
   border-radius: var(--radius-xl);
   padding: 10px 12px;
   background: var(--bg-elevated);
   border: var(--hairline);
   color: var(--fg);
+  overflow-wrap: anywhere;
 }
 .bubble.user {
   align-self: flex-end;
@@ -477,6 +478,7 @@ body.lavish {
 }
 .bubble.agent {
   align-self: flex-start;
+  max-width: 100%;
   background: transparent;
   border-color: var(--border-subtle);
 }
@@ -506,6 +508,29 @@ body.lavish {
 }
 .bubble.user small {
   text-align: right;
+}
+.bubble-body {
+  display: grid;
+  gap: 8px;
+  line-height: 1.58;
+}
+.bubble-body > * {
+  margin: 0;
+}
+.bubble-body ul,
+.bubble-body ol {
+  padding-left: 18px;
+}
+.bubble-body li + li {
+  margin-top: 4px;
+}
+.bubble-body code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--steel-700);
 }
 @keyframes spin {
   to {
