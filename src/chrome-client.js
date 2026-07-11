@@ -46,6 +46,7 @@ const shareDialog = /** @type {HTMLDivElement} */ (document.getElementById("shar
 const deliveryFailure = /** @type {HTMLElement} */ (document.getElementById("deliveryFailure"));
 const deliveryFailureText = /** @type {HTMLElement} */ (document.getElementById("deliveryFailureText"));
 const retryDeliveryButton = /** @type {HTMLButtonElement} */ (document.getElementById("retryDelivery"));
+const dismissDeliveryButton = /** @type {HTMLButtonElement} */ (document.getElementById("dismissDelivery"));
 const shareForm = /** @type {HTMLFormElement} */ (document.getElementById("shareForm"));
 const shareCloseButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareClose"));
 const shareCancelButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareCancel"));
@@ -103,6 +104,7 @@ let copyHintTimer;
 /** @type {ReturnType<typeof setTimeout> | undefined} */
 let sendHintTimer;
 let feedbackDelivery = sessionData.feedbackDelivery || null;
+let deliveryDismissed = false;
 
 function escapeHtml(value) {
   return String(value).replace(
@@ -138,12 +140,11 @@ function persistQueuedPrompts() {
     // The in-memory queue still works if browser storage is unavailable.
   }
 }
-
 function renderDeliveryFailure(delivery) {
   feedbackDelivery = delivery || feedbackDelivery;
   const exhausted = feedbackDelivery?.state === "exhausted" || feedbackDelivery?.status === "delivery_exhausted";
   if (!deliveryFailure) return;
-  deliveryFailure.hidden = !exhausted;
+  deliveryFailure.hidden = !exhausted || deliveryDismissed;
   if (exhausted && deliveryFailureText) {
     deliveryFailureText.textContent = "Feedback not yet delivered. Retry delivery.";
   }
@@ -162,7 +163,9 @@ async function retryExhaustedDelivery() {
     feedbackDelivery = { id: deliveryId, state: "pending" };
     renderDeliveryFailure(feedbackDelivery);
   } catch (error) {
+    deliveryDismissed = false;
     if (deliveryFailureText) deliveryFailureText.textContent = `Feedback not yet delivered. ${error.message}`;
+    if (deliveryFailure) deliveryFailure.hidden = false;
   } finally {
     retryDeliveryButton.disabled = false;
   }
@@ -1555,6 +1558,10 @@ frame.addEventListener("load", () => {
   }
 });
 
+dismissDeliveryButton?.addEventListener("click", () => {
+  deliveryDismissed = true;
+  if (deliveryFailure) deliveryFailure.hidden = true;
+});
 initializeLayoutGate();
 retryDeliveryButton?.addEventListener("click", retryExhaustedDelivery);
 renderDeliveryFailure(feedbackDelivery);
@@ -1571,14 +1578,17 @@ evoTimeline.hidden = true;
 sessionsButton.setAttribute("aria-expanded", "false");
 sessionsButton.setAttribute("aria-pressed", "false");
 evolutionHistory.setAttribute("aria-expanded", "false");
+events.addEventListener("feedback-delivery", (event) => {
+  const state = JSON.parse(event.data);
+  if (state.state === "exhausted") {
+    deliveryDismissed = false;
+    renderDeliveryFailure({ ...state, status: "delivery_exhausted" });
+  }
+});
 renderEvolution(sessionData);
 if (storedOverlayState("sessions")) openSessions();
 if (storedOverlayState("timeline")) openTimeline();
 events.addEventListener("agent-reply", (event) => addChat("agent", JSON.parse(event.data).text));
-events.addEventListener("feedback-delivery", (event) => {
-  const state = JSON.parse(event.data);
-  if (state.state === "exhausted") renderDeliveryFailure({ ...state, status: "delivery_exhausted" });
-});
 events.addEventListener("chat-sync", (event) => syncChat(JSON.parse(event.data).chat || []));
 events.addEventListener("agent-presence", (event) => setAgentPresence(JSON.parse(event.data).state));
 

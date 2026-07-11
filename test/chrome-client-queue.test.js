@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 const sourceUrl = new URL("../src/chrome-client.js", import.meta.url);
 
-/** @typedef {{ key: string, file: string, layoutGateEnabled?: boolean, layoutGateMaxHoldMs?: number, modeToggleHotkeyKey?: string, evolution?: object, since_last_viewed?: object }} HarnessSessionData */
+/** @typedef {{ key: string, file: string, layoutGateEnabled?: boolean, layoutGateMaxHoldMs?: number, modeToggleHotkeyKey?: string, evolution?: object, since_last_viewed?: object, feedbackDelivery?: object }} HarnessSessionData */
 /** @type {HarnessSessionData} */
 const defaultSessionData = { key: "abc", file: "/tmp/artifact.html", modeToggleHotkeyKey: "i" };
 
@@ -1393,4 +1393,34 @@ test("chrome timeline loads reverse-chronological metadata without source diffs"
   assert.doesNotMatch(html, /diff viewer|source diff/i);
   chrome.element("evoTimelineClose").click();
   assert.equal(chrome.element("evoTimeline").hidden, true);
+});
+test("chrome dismisses exhausted delivery locally and restores retry after reload", async () => {
+  let retryCalls = 0;
+  const options = {
+    sessionData: {
+      ...defaultSessionData,
+      feedbackDelivery: { id: "delivery-1", state: "exhausted" },
+    },
+    fetchImpl: async (url) => {
+      retryCalls += 1;
+      assert.equal(url, "/api/abc/feedback/delivery-1/retry");
+      return {
+        ok: true,
+        async json() {
+          return { status: "retrying" };
+        },
+      };
+    },
+  };
+  const chrome = await createChromeHarness(options);
+  assert.equal(chrome.element("deliveryFailure").hidden, false);
+  chrome.element("dismissDelivery").listeners.get("click")();
+  assert.equal(chrome.element("deliveryFailure").hidden, true);
+  const reloaded = await createChromeHarness(options);
+  assert.equal(reloaded.element("deliveryFailure").hidden, false);
+  reloaded.element("retryDelivery").listeners.get("click")();
+  await flushPromises();
+  await flushPromises();
+  assert.equal(retryCalls, 1);
+  assert.equal(reloaded.element("deliveryFailure").hidden, true);
 });

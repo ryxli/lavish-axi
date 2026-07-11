@@ -427,6 +427,20 @@ test("chrome template contains every client-required element id", async () => {
   }
   assert.match(html, /id="evolutionSetIdeal"/);
 });
+test("chrome template keeps delivery banner overlay dismissible", async () => {
+  const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
+  const layoutStart = html.indexOf('<div class="layout">');
+  const failureStart = html.indexOf('id="deliveryFailure"');
+  const shareStart = html.indexOf('id="shareDialog"');
+  assert.ok(layoutStart >= 0);
+  assert.ok(failureStart > layoutStart);
+  assert.ok(failureStart < shareStart);
+  assert.match(html, /class="layout-issue-banner delivery-failure"/);
+  assert.match(html, /id="dismissDelivery"[^>]*>Dismiss</);
+  assert.match(html, /id="retryDelivery"[^>]*>Retry delivery</);
+  const css = await chromeCssSource();
+  assert.match(css, /\.delivery-failure\{[^}]*display:flex/);
+});
 
 test("overflow menu shows the artifact path with a copy affordance", async () => {
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact/index.html" });

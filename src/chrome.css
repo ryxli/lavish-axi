@@ -1287,3 +1287,17 @@ body.layout-gate-active iframe#artifact {
     max-width: 34vw;
   }
 }
+.delivery-failure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.delivery-failure p {
+  margin: 0;
+}
+.delivery-failure-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-6);
+}
