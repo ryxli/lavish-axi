@@ -2,6 +2,11 @@
 
 import * as mermaidHelpers from "./mermaid-node.js";
 
+import {
+  LAYOUT_AUDIT_OVERFLOW_EPSILON,
+  LAYOUT_WARNING_SEVERITIES,
+  severityForOverflow,
+} from "./layout-warning-policy.js";
 export const LAVISH_INTERNAL_QUEUE_KEY = "_lavishQueueKey";
 
 export const MODE_TOGGLE_HOTKEY_KEY = "i";
@@ -202,6 +207,7 @@ export function createArtifactSdk(
   deriveQueueKey,
   isNativeInteractive = isNativeInteractiveControl,
   mermaid = mermaidHelpers,
+  whiteboardEditingEnabled = false,
 ) {
   const { isMermaidSvg, mermaidNodeFrom, mermaidNodeElement } = mermaid;
   let annotationMode = true;
@@ -481,7 +487,7 @@ export function createArtifactSdk(
 
   function enhanceMermaid() {
     for (const svg of findMermaidSvgs()) {
-      embedWhiteboard(svg);
+      if (whiteboardEditingEnabled) embedWhiteboard(svg);
       if (mermaidViewports.has(svg)) continue;
       const viewport = createViewport(svg);
       if (viewport) {
@@ -670,13 +676,11 @@ export function createArtifactSdk(
       lines.push("  ".repeat(depth) + "uid=" + c.uid + " " + c.tag + name);
       for (const child of el.children) walk(child, depth + 1);
     }
-
     walk(document.body, 0);
     return lines.join("\n");
   }
 
-  const layoutAuditOverflowEpsilon = 1;
-  const layoutAuditErrorOverflowPx = 4;
+  const layoutAuditOverflowEpsilon = LAYOUT_AUDIT_OVERFLOW_EPSILON;
   const layoutAuditSettleMs = 180;
   const layoutAuditMaxWaitMs = 2000;
   let layoutAuditTimer = 0;
@@ -693,7 +697,7 @@ export function createArtifactSdk(
   }
 
   function overflowSeverity(overflowPx) {
-    return overflowPx > layoutAuditErrorOverflowPx ? "error" : "warning";
+    return severityForOverflow(overflowPx);
   }
 
   function elementText(el) {
@@ -774,7 +778,10 @@ export function createArtifactSdk(
       kind: String(finding.kind || "layout-warning"),
       overflowPx: roundedOverflowPx(finding.overflowPx),
       viewportWidth: Math.round(Number(finding.viewportWidth) || window.innerWidth || 0),
-      severity: finding.severity === "warning" ? "warning" : "error",
+      severity:
+        finding.severity === LAYOUT_WARNING_SEVERITIES.warning
+          ? LAYOUT_WARNING_SEVERITIES.warning
+          : LAYOUT_WARNING_SEVERITIES.error,
     });
   }
 

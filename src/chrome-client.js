@@ -30,6 +30,9 @@ const copySnapshotButton = /** @type {HTMLButtonElement} */ (document.getElement
 const exportArtifactButton = /** @type {HTMLButtonElement} */ (document.getElementById("exportArtifact"));
 const shareArtifactButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareArtifact"));
 const shareDialog = /** @type {HTMLDivElement} */ (document.getElementById("shareDialog"));
+const deliveryFailure = /** @type {HTMLElement} */ (document.getElementById("deliveryFailure"));
+const deliveryFailureText = /** @type {HTMLElement} */ (document.getElementById("deliveryFailureText"));
+const retryDeliveryButton = /** @type {HTMLButtonElement} */ (document.getElementById("retryDelivery"));
 const shareForm = /** @type {HTMLFormElement} */ (document.getElementById("shareForm"));
 const shareCloseButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareClose"));
 const shareCancelButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareCancel"));
@@ -86,6 +89,7 @@ let lastScroll = { x: 0, y: 0 };
 let copyHintTimer;
 /** @type {ReturnType<typeof setTimeout> | undefined} */
 let sendHintTimer;
+let feedbackDelivery = sessionData.feedbackDelivery || null;
 
 function escapeHtml(value) {
   return String(value).replace(
@@ -122,6 +126,35 @@ function persistQueuedPrompts() {
   }
 }
 
+function renderDeliveryFailure(delivery) {
+  feedbackDelivery = delivery || feedbackDelivery;
+  const exhausted = feedbackDelivery?.state === "exhausted" || feedbackDelivery?.status === "delivery_exhausted";
+  if (!deliveryFailure) return;
+  deliveryFailure.hidden = !exhausted;
+  if (exhausted && deliveryFailureText) {
+    deliveryFailureText.textContent = "Feedback not yet delivered. Retry delivery.";
+  }
+}
+
+async function retryExhaustedDelivery() {
+  const deliveryId = feedbackDelivery?.id || feedbackDelivery?.delivery_id;
+  if (!deliveryId) return;
+  retryDeliveryButton.disabled = true;
+  try {
+    const response = await fetch("/api/" + key + "/feedback/" + encodeURIComponent(deliveryId) + "/retry", {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "retry failed");
+    feedbackDelivery = { id: deliveryId, state: "pending" };
+    renderDeliveryFailure(feedbackDelivery);
+  } catch (error) {
+    if (deliveryFailureText) deliveryFailureText.textContent = `Feedback not yet delivered. ${error.message}`;
+  } finally {
+    retryDeliveryButton.disabled = false;
+  }
+}
+
 function render() {
   annotationPills.innerHTML = queued
     .map(
@@ -151,8 +184,13 @@ function render() {
 }
 
 function updateSendState() {
-  sendButton.disabled = ended || agentPresence === "working";
-  sendAndEndButton.disabled = sendButton.disabled;
+  sendButton.disabled = ended;
+  sendAndEndButton.disabled = ended;
+  if (!ended && agentPresence === "working" && queued.length) {
+    sendHint.textContent = `Queued (${queued.length}) while your agent works.`;
+  } else if (!ended) {
+    sendHint.textContent = "Write a message or annotate an element first.";
+  }
 }
 
 function showSendHint() {
@@ -231,16 +269,18 @@ function syncChat(chat) {
 }
 
 function setAgentPresence(state) {
+  const previousPresence = agentPresence;
   agentPresence = state === "listening" || state === "working" ? state : "waiting";
   updateSendState();
   if (presenceBanner) presenceBanner.hidden = ended || agentPresence !== "waiting";
-
+  if (previousPresence === "working" && agentPresence !== "working" && queued.length && !ended) {
+    requestSnapshot("submit");
+  }
   if (agentPresence !== "working") {
     if (workingBubble) workingBubble.remove();
     workingBubble = null;
     return;
   }
-
   if (!workingBubble) {
     workingBubble = document.createElement("div");
     workingBubble.className = "bubble agent agent-working";
@@ -291,7 +331,9 @@ function enqueuePrompt(prompt) {
 function stripInternalPromptFields(prompt) {
   if (!prompt || typeof prompt !== "object") return prompt;
   const clean = { ...prompt };
+  const queueKey = String(clean[internalQueueKeyField] || "").trim();
   delete clean[internalQueueKeyField];
+  if (queueKey) clean.queue_key = queueKey;
   return clean;
 }
 
@@ -305,7 +347,7 @@ function requestSnapshot(action) {
 }
 
 function sendQueued(endAfter) {
-  if (ended || agentPresence === "working") return;
+  if (ended) return;
   closeMenus();
 
   const text = chatInput.value.trim();
@@ -325,8 +367,12 @@ function sendQueued(endAfter) {
   if (endAfter) endAfterSubmit = true;
   requestSnapshot("submit");
 }
-
 async function submitQueued() {
+  if (agentPresence === "working") {
+    sendHint.textContent = `Queued (${queued.length}) while your agent works.`;
+    sendHint.hidden = !queued.length;
+    return;
+  }
   if (submitQueuedPromise) {
     submitQueuedAgain = true;
     return submitQueuedPromise;
@@ -567,7 +613,9 @@ async function exportArtifact() {
   exportArtifactButton.disabled = true;
   setExportLabel("Exporting...");
   try {
-    const response = await fetch("/api/" + key + "/export");
+    const response = layoutGateManuallyBypassed
+      ? await fetch("/api/" + key + "/export?allow-layout-issues=1")
+      : await fetch("/api/" + key + "/export");
     if (!response.ok) throw new Error("export failed");
     const warningCount = Number(response.headers.get("x-lavish-export-warning-count") || "0");
     const noticeCount = Number(response.headers.get("x-lavish-export-notice-count") || "0");
@@ -621,13 +669,15 @@ async function publishShare(event) {
   shareStatus.classList.remove("error");
   shareStatus.textContent = "Publishing to ht-ml.app...";
   shareResult.hidden = true;
-  const password = sharePasswordInput.value.trim();
-  const passwordProtected = Boolean(password);
   try {
+    const password = sharePasswordInput.value.trim();
+    const passwordProtected = Boolean(password);
+    const requestBody = password ? { password } : {};
+    if (layoutGateManuallyBypassed) requestBody.allow_layout_issues = true;
     const response = await fetch("/api/" + key + "/share", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(password ? { password } : {}),
+      body: JSON.stringify(requestBody),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "publish failed");
@@ -1285,6 +1335,8 @@ frame.addEventListener("load", () => {
 });
 
 initializeLayoutGate();
+retryDeliveryButton?.addEventListener("click", retryExhaustedDelivery);
+renderDeliveryFailure(feedbackDelivery);
 
 const events = new EventSource("/events/" + key);
 events.addEventListener("reload", () => {
@@ -1294,6 +1346,10 @@ events.addEventListener("reload", () => {
 });
 events.addEventListener("chrome-reload", () => reloadAfterServerRestart());
 events.addEventListener("agent-reply", (event) => addChat("agent", JSON.parse(event.data).text));
+events.addEventListener("feedback-delivery", (event) => {
+  const state = JSON.parse(event.data);
+  if (state.state === "exhausted") renderDeliveryFailure({ ...state, status: "delivery_exhausted" });
+});
 events.addEventListener("chat-sync", (event) => syncChat(JSON.parse(event.data).chat || []));
 events.addEventListener("agent-presence", (event) => setAgentPresence(JSON.parse(event.data).state));
 

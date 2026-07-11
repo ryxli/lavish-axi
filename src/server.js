@@ -30,6 +30,13 @@ import {
   writeWhiteboardFeedbackFiles,
 } from "./whiteboard-store.js";
 import {
+  LAYOUT_AUDIT_ERROR_OVERFLOW_PX,
+  LAYOUT_AUDIT_OVERFLOW_EPSILON,
+  LAYOUT_WARNING_SEVERITIES,
+  hasBlockingLayoutWarnings,
+  severityForOverflow,
+} from "./layout-warning-policy.js";
+import {
   buildSelfContainedHtml,
   exportFileName,
   exportWarningSummaries,
@@ -126,10 +133,11 @@ export async function serve({
 }) {
   const app = express();
   const store = new SessionStore(stateFile);
+  const whiteboardEditingEnabled = process.env.LAVISH_AXI_ENABLE_WHITEBOARD_EDITING === "1";
   const events = new EventEmitter();
   const watchers = new Map();
   const activePolls = new Map();
-  const deliveredFeedback = new Set();
+  const workingSessions = new Set();
   const sseClients = new Set();
   const whiteboardChannelSecret = crypto.randomBytes(32);
   const verbose = debug || process.env.LAVISH_AXI_DEBUG === "1";
@@ -181,7 +189,7 @@ export async function serve({
       const url = shouldDisableLayoutGateOpen(req.body || {}) ? appendNoGateParam(sessionUrl) : sessionUrl;
       const session = await store.upsertSession(file, sessionUrl);
       if (existing?.status === "ended") {
-        clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
+        clearFeedbackDelivery(key, activePolls, workingSessions, events);
       }
       logEvent?.(`session opened key=${key} file=${file}`);
       await watchSession(session, watchers, events, logEvent);
@@ -197,10 +205,16 @@ export async function serve({
       const key = sessionKey(file);
       const timeoutMs =
         req.query.timeoutMs === undefined ? null : Math.max(0, Math.min(Number(req.query.timeoutMs || 0), 2147483647));
-      const immediate = await store.takeFeedback(key);
+      const immediate = await store.leaseFeedback(key);
       if (immediate.status !== "waiting") {
-        if (immediate.status === "feedback") markFeedbackDelivered(key, activePolls, deliveredFeedback, events);
         res.json(immediate);
+        if (immediate.status === "delivery_exhausted") {
+          events.emit("feedback-delivery", key, {
+            delivery_id: immediate.delivery_id,
+            state: "exhausted",
+            attempts: immediate.attempts,
+          });
+        }
         return;
       }
       const streamHeartbeat = timeoutMs === null;
@@ -213,7 +227,7 @@ export async function serve({
         }, pollHeartbeatMs);
         heartbeat.unref?.();
       }
-      setPollActive(key, activePolls, deliveredFeedback, events, true);
+      setPollActive(key, activePolls, workingSessions, events, true);
       refreshIdleTimer();
       const timer = timeoutMs === null ? null : setTimeout(() => respond().catch(handleRespondError), timeoutMs);
       let cleaned = false;
@@ -225,18 +239,24 @@ export async function serve({
         if (heartbeat) clearInterval(heartbeat);
         events.off("feedback", onFeedback);
         events.off("ended", onFeedback);
-        setPollActive(key, activePolls, deliveredFeedback, events, false);
+        setPollActive(key, activePolls, workingSessions, events, false);
         refreshIdleTimer();
       };
       const respond = async () => {
         if (responding || res.writableEnded) return;
         responding = true;
         try {
-          const result = await store.takeFeedback(key);
-          if (result.status === "feedback") markFeedbackDelivered(key, activePolls, deliveredFeedback, events);
+          const result = await store.leaseFeedback(key);
           if (streamHeartbeat) {
             res.end(JSON.stringify(result));
           } else {
+            if (result.status === "delivery_exhausted") {
+              events.emit("feedback-delivery", key, {
+                delivery_id: result.delivery_id,
+                state: "exhausted",
+                attempts: result.attempts,
+              });
+            }
             res.json(result);
           }
         } finally {
@@ -273,10 +293,48 @@ export async function serve({
         res.status(404).json({ error: "session not found" });
         return;
       }
-      if (shouldEndSession) clearFeedbackDelivery(req.params.key, activePolls, deliveredFeedback, events);
+      if (session.rejected === "ended") {
+        res.status(409).json({ error: "session ended", status: "ended" });
+        return;
+      }
       events.emit(shouldEndSession ? "ended" : "feedback", req.params.key);
       res.json({ status: "queued", pending_prompts: session.pending_prompts });
       if (shouldEndSession) await shutdownIfNoLiveSessions();
+      app.post("/api/:key/feedback/:deliveryId/ack", async (req, res, next) => {
+        try {
+          const result = await store.ackFeedback(req.params.key, req.params.deliveryId);
+          if (result.status === "missing") {
+            res.status(404).json({ error: "session not found" });
+            return;
+          }
+          if (result.status === "conflict") {
+            res.status(409).json({ error: "stale delivery id" });
+            return;
+          }
+          markAgentWorking(req.params.key, activePolls, workingSessions, events);
+          res.json(result);
+        } catch (error) {
+          next(error);
+        }
+      });
+
+      app.post("/api/:key/feedback/:deliveryId/retry", async (req, res, next) => {
+        try {
+          const result = await store.retryFeedback(req.params.key, req.params.deliveryId);
+          if (result.status === "missing") {
+            res.status(404).json({ error: "session not found" });
+            return;
+          }
+          if (result.status === "conflict") {
+            res.status(409).json({ error: "delivery is not exhausted or id is stale" });
+            return;
+          }
+          events.emit("feedback", req.params.key);
+          res.json(result);
+        } catch (error) {
+          next(error);
+        }
+      });
     } catch (error) {
       next(error);
     }
@@ -301,7 +359,7 @@ export async function serve({
   app.post("/api/:key/end", async (req, res, next) => {
     try {
       await store.endSession(req.params.key, "user");
-      clearFeedbackDelivery(req.params.key, activePolls, deliveredFeedback, events);
+      clearFeedbackDelivery(req.params.key, activePolls, workingSessions, events);
       events.emit("ended", req.params.key);
       res.json({ status: "ended" });
       await shutdownIfNoLiveSessions();
@@ -325,6 +383,27 @@ export async function serve({
     }
   });
 
+  function layoutHandoffBypassed(req) {
+    return (
+      String(req.query?.["allow-layout-issues"] || "") === "1" ||
+      String(req.headers?.["x-lavish-layout-bypass"] || "") === "1" ||
+      String(req.body?.allow_layout_issues || "") === "1"
+    );
+  }
+
+  function rejectBlockedLayoutHandoff(res, session, req) {
+    const warnings = session?.layout_warnings || [];
+    if (hasBlockingLayoutWarnings(warnings) && !layoutHandoffBypassed(req)) {
+      res.status(409).json({
+        error: "layout warnings block handoff",
+        layout_warnings: warnings,
+        requires_layout_bypass: true,
+      });
+      return true;
+    }
+    return false;
+  }
+
   // Static export: inline the artifact's local assets into one portable HTML file the user can
   // open from disk or host anywhere, with no dependency on this server. Remote CDN/font URLs are
   // left as references for the browser to load, so the export needs network to render those.
@@ -335,6 +414,7 @@ export async function serve({
         res.status(404).json({ error: "session not found" });
         return;
       }
+      if (rejectBlockedLayoutHandoff(res, session, req)) return;
       const source = await readFile(session.file, "utf8");
       const root = path.dirname(session.file);
       const { html, warnings } = await buildSelfContainedHtml(source, {
@@ -370,6 +450,7 @@ export async function serve({
         res.status(404).json({ error: "session not found" });
         return;
       }
+      if (rejectBlockedLayoutHandoff(res, session, req)) return;
       const body = req.body || {};
       const source = await readFile(session.file, "utf8");
       const root = path.dirname(session.file);
@@ -402,7 +483,7 @@ export async function serve({
       const file = await canonicalFile(req.body.file);
       const key = sessionKey(file);
       await store.endSession(key, "agent");
-      clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
+      clearFeedbackDelivery(key, activePolls, workingSessions, events);
       events.emit("ended", key);
       res.json({ status: "ended" });
       await shutdownIfNoLiveSessions();
@@ -426,6 +507,7 @@ export async function serve({
           layoutGateEnabled: shouldEnableLayoutGate(req.query || {}),
           faviconTag,
           title: title ? `${title} · Lavish` : "Lavish Editor",
+          whiteboardEditingEnabled,
         }),
       );
     } catch (error) {
@@ -446,7 +528,7 @@ export async function serve({
         return;
       }
       const html = await readFile(session.file, "utf8");
-      res.type("html").send(injectLavishSdk(html, key));
+      res.type("html").send(injectLavishSdk(html, key, whiteboardEditingEnabled));
     } catch (error) {
       next(error);
     }
@@ -498,18 +580,25 @@ export async function serve({
           res.write(`event: agent-presence\ndata: ${JSON.stringify({ state })}\n\n`);
         }
       };
+      const sendDelivery = (key, state) => {
+        if (key === req.params.key) {
+          res.write(`event: feedback-delivery\ndata: ${JSON.stringify(state)}\n\n`);
+        }
+      };
       res.write(`event: chat-sync\ndata: ${JSON.stringify({ chat: session?.chat || [] })}\n\n`);
       res.write(
-        `event: agent-presence\ndata: ${JSON.stringify({ state: computePresence(req.params.key, activePolls, deliveredFeedback) })}\n\n`,
+        `event: agent-presence\ndata: ${JSON.stringify({ state: computePresence(req.params.key, activePolls, workingSessions) })}\n\n`,
       );
       events.on("reload", sendReload);
       events.on("agent-reply", sendAgentReply);
       events.on("agent-presence", sendPresence);
+      events.on("feedback-delivery", sendDelivery);
       req.on("close", () => {
         sseClients.delete(res);
         events.off("reload", sendReload);
         events.off("agent-reply", sendAgentReply);
         events.off("agent-presence", sendPresence);
+        events.off("feedback-delivery", sendDelivery);
         refreshIdleTimer();
       });
     } catch (error) {
@@ -547,7 +636,7 @@ export async function serve({
   });
 
   app.get("/sdk.js", (req, res) => {
-    res.type("application/javascript").send(createSdkJs(String(req.query.key || "")));
+    res.type("application/javascript").send(createSdkJs(String(req.query.key || ""), whiteboardEditingEnabled));
   });
 
   // The whiteboard frame page. Hosted by the chrome in a dedicated sandboxed
@@ -556,6 +645,19 @@ export async function serve({
   // origin, matching the artifact iframe's trust posture. The chrome passes
   // the diagram source and saved scene over postMessage after the frame
   // reports ready.
+  app.use((req, res, next) => {
+    const whiteboardPath =
+      req.path === "/whiteboard-frame" ||
+      req.path.startsWith("/whiteboard-assets/") ||
+      req.path.includes("/mermaid-sources") ||
+      req.path.includes("/whiteboard-channel") ||
+      req.path.includes("/whiteboard/");
+    if (!whiteboardEditingEnabled && whiteboardPath) {
+      res.status(404).send("Whiteboard editing disabled");
+      return;
+    }
+    next();
+  });
   app.get("/whiteboard-frame", (req, res) => {
     res.setHeader("cache-control", "no-store");
     res.type("html").send(createWhiteboardFrameHtml(createWhiteboardChannelToken(whiteboardChannelSecret)));
@@ -936,42 +1038,39 @@ export function hasLiveReloadRootOptIn(html) {
   return /<meta\b(?=[^>]*name=["']lavish-live-reload["'])(?=[^>]*content=["']root["'])[^>]*>/i.test(searchableHtml);
 }
 
-function setPollActive(key, activePolls, deliveredFeedback, events, active) {
-  const previousPresence = computePresence(key, activePolls, deliveredFeedback);
+function setPollActive(key, activePolls, workingSessions, events, active) {
+  const previousPresence = computePresence(key, activePolls, workingSessions);
   const count = activePolls.get(key) || 0;
   const nextCount = active ? count + 1 : Math.max(0, count - 1);
   if (nextCount === count) return;
-  if (nextCount === 0) {
-    activePolls.delete(key);
-  } else {
-    activePolls.set(key, nextCount);
-    deliveredFeedback.delete(key);
-  }
-  const nextPresence = computePresence(key, activePolls, deliveredFeedback);
+  if (nextCount === 0) activePolls.delete(key);
+  else activePolls.set(key, nextCount);
+  if (active) workingSessions.delete(key);
+  const nextPresence = computePresence(key, activePolls, workingSessions);
   if (nextPresence !== previousPresence) events.emit("agent-presence", key, nextPresence);
 }
 
-function markFeedbackDelivered(key, activePolls, deliveredFeedback, events) {
-  const previousPresence = computePresence(key, activePolls, deliveredFeedback);
-  deliveredFeedback.add(key);
-  const nextPresence = computePresence(key, activePolls, deliveredFeedback);
-  if (nextPresence !== previousPresence) {
-    events.emit("agent-presence", key, nextPresence);
-  }
+function markAgentWorking(key, activePolls, workingSessions, events) {
+  const previousPresence = computePresence(key, activePolls, workingSessions);
+  workingSessions.add(key);
+  const nextPresence = computePresence(key, activePolls, workingSessions);
+  if (nextPresence !== previousPresence) events.emit("agent-presence", key, nextPresence);
 }
 
-function clearFeedbackDelivery(key, activePolls, deliveredFeedback, events) {
-  const previousPresence = computePresence(key, activePolls, deliveredFeedback);
-  deliveredFeedback.delete(key);
-  const nextPresence = computePresence(key, activePolls, deliveredFeedback);
-  if (nextPresence !== previousPresence) {
-    events.emit("agent-presence", key, nextPresence);
-  }
+function clearAgentWorking(key, activePolls, workingSessions, events) {
+  const previousPresence = computePresence(key, activePolls, workingSessions);
+  workingSessions.delete(key);
+  const nextPresence = computePresence(key, activePolls, workingSessions);
+  if (nextPresence !== previousPresence) events.emit("agent-presence", key, nextPresence);
 }
 
-export function computePresence(key, activePolls, deliveredFeedback) {
+function clearFeedbackDelivery(key, activePolls, workingSessions, events) {
+  clearAgentWorking(key, activePolls, workingSessions, events);
+}
+
+export function computePresence(key, activePolls, workingSessions) {
   if (activePolls.has(key)) return "listening";
-  if (deliveredFeedback.has(key)) return "working";
+  if (workingSessions.has(key)) return "working";
   return "waiting";
 }
 
@@ -1112,7 +1211,12 @@ export function extractArtifactHead(html) {
 
 export function createChromeHtml(
   session,
-  { layoutGateEnabled = true, faviconTag = LAVISH_DEFAULT_FAVICON, title = "Lavish Editor" } = {},
+  {
+    layoutGateEnabled = true,
+    faviconTag = LAVISH_DEFAULT_FAVICON,
+    title = "Lavish Editor",
+    whiteboardEditingEnabled = false,
+  } = {},
 ) {
   const sessionJson = jsonScript({
     key: session.key,
@@ -1120,6 +1224,8 @@ export function createChromeHtml(
     initialChat: session.chat || [],
     layoutGateEnabled,
     modeToggleHotkeyKey: MODE_TOGGLE_HOTKEY_KEY,
+    feedbackDelivery: session.feedback_delivery || null,
+    whiteboardEditingEnabled,
   });
   const { head: pathHead, tail: pathTail } = displayPathParts(session.file);
   const bodyClass = layoutGateEnabled ? "lavish layout-gate-active" : "lavish";
@@ -1138,6 +1244,7 @@ ${faviconTag}
 <body class="${bodyClass}">
 <div class="bar"><div class="brand"><span class="brand-mark">Lavish</span><span class="brand-support">Editor</span></div><div class="spacer" aria-hidden="true"></div><button class="annotate-switch" id="annotation" type="button" aria-pressed="true" title="${escapeHtml(modeToggleHint)}"><span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span><span>Annotate</span></button><div class="more-wrap" id="moreWrap"><button class="more-button" id="moreButton" type="button" title="More" aria-haspopup="menu" aria-expanded="false">${chromeIcons.more}</button><div class="menu more-menu" id="moreMenu" hidden><div class="menu-head"><div class="menu-label">Editing</div><button class="menu-file" id="copyPath" type="button" title="Copy path · ${escapeHtml(session.file)}">${chromeIcons.file}<span class="menu-file-text"><span class="path-head">${escapeHtml(pathHead)}</span><span class="path-tail">${escapeHtml(pathTail)}</span></span><span class="copy-hint" id="copyHint"><span class="icon-copy">${chromeIcons.copy}</span><span class="icon-check">${chromeIcons.check}</span><span id="copyHintText">Copy</span></span></button></div><div class="menu-rule"></div><button class="menu-item" id="reloadArtifact" type="button">${chromeIcons.refresh}<span>Reload artifact</span></button><button class="menu-item" id="copySnapshot" type="button">${chromeIcons.camera}<span>Copy DOM snapshot</span></button><button class="menu-item" id="exportArtifact" type="button">${chromeIcons.download}<span>Export standalone HTML</span></button><button class="menu-item" id="shareArtifact" type="button">${chromeIcons.globe}<span>Publish link</span></button><div class="menu-rule"></div><button class="menu-item danger" id="end" type="button">${chromeIcons.exit}<span>End session</span></button></div></div></div>
 <div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-downloads" data-artifact-src="/artifact/${session.key}/index.html"></iframe><div class="layout-issue-banner" id="layoutIssueBanner" hidden>This surface may have layout issues. Your agent has been notified.</div></div><aside class="panel"><h2>Conversation</h2><div class="panel-scroll" id="panelScroll"><div class="chat" id="chatLog"></div><div class="annotation-pills" id="annotationPills"></div></div><div class="composer"><div class="presence-banner" id="presenceBanner" hidden>Your agent is not listening. If this persists, ask your agent to poll for updates from Lavish.</div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="send-hint" id="sendHint" hidden>Write a message or annotate an element first.</div><div class="actions" id="sendActions"><button class="button button-danger" id="sendAndEnd" type="button">${chromeIcons.exit}<span>Send &amp; End</span></button><button class="button" id="send">Send to Agent</button></div></div></aside></div>
+<section class="layout-issue-banner delivery-failure" id="deliveryFailure" hidden><p id="deliveryFailureText">Feedback not yet delivered. Retry delivery.</p><button class="button" id="retryDelivery" type="button">Retry delivery</button></section>
 <div class="share-overlay" id="shareDialog" role="dialog" aria-modal="true" aria-labelledby="shareTitleText" hidden><form class="share-card" id="shareForm"><div class="share-head"><div><div class="share-kicker">Publish to <a class="share-link" href="https://ht-ml.app" target="_blank" rel="noopener noreferrer">ht-ml.app</a></div><h2 id="shareTitleText">Publish artifact</h2></div><button class="share-close" id="shareClose" type="button" aria-label="Close publish dialog"><svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><p class="share-note">ht-ml.app is a separate, third-party hosting service, not part of Lavish. Publishing sends this artifact to its servers.</p><p class="share-copy">This uploads this artifact to ht-ml.app with local assets inlined. Without a password, the page is PUBLIC and anyone with the link can open it. With a password, the page is PRIVATE and viewers must supply the password to view.</p><p class="share-note">Do not publish secrets. The Lavish annotation SDK is not included.</p><div class="share-grid"><label>Password (optional)<input id="sharePassword" name="password" type="password" autocomplete="new-password" placeholder="Leave blank for a public page"></label></div><div class="share-status" id="shareStatus" role="status"></div><div class="share-result" id="shareResult" hidden><label>Share URL<div class="share-copy-row"><input id="shareUrl" readonly><button class="share-copy-btn" id="copyShareUrl" type="button">Copy URL</button></div></label><label>Update key (secret)<div class="share-copy-row"><input id="shareUpdateKey" readonly><button class="share-copy-btn" id="copyUpdateKey" type="button">Copy key</button></div></label><p class="share-note">Keep the update key private. ht-ml.app returns it once and it is the only way to update or delete this page later.</p></div><div class="share-actions"><button class="share-cancel" id="shareCancel" type="button">Cancel</button><button class="button" id="sharePublish" type="submit">Publish</button></div></form></div>
 <div class="ended-overlay layout-gate-overlay" id="layoutGateOverlay"${layoutGateHidden}><div class="ended-card"><div class="ended-title" id="layoutGateTitle">Checking layout.<br>One moment.</div><p class="ended-copy" id="layoutGateCopy">Lavish is waiting for fonts and final geometry before revealing this artifact.</p><button class="button ended-action" id="layoutGateAction" type="button">Show anyway</button></div></div>
 <div class="ended-overlay" id="endedOverlay" hidden><div class="ended-card"><div class="ended-title">Session ended.<br>Return to your agent to continue.</div><p class="ended-copy">${escapeHtml(session.file)}</p></div></div>
@@ -1164,17 +1271,19 @@ export function createWhiteboardFrameHtml(channelToken = "") {
 </html>`;
 }
 
-export function createSdkJs(key) {
-  // Serialize every helper exported by mermaid-node.js as a same-scope const so
-  // cross-helper calls (e.g. mermaidNodeFrom → mermaidNodeElement) resolve in the
-  // browser. Deriving this from the module's exports — rather than a hand-kept
-  // list — means adding a helper can never silently ReferenceError at runtime.
+export function createSdkJs(key, whiteboardEditingEnabled = false) {
   const mermaidHelperEntries = Object.entries(mermaidNode).filter(([, value]) => typeof value === "function");
   const mermaidHelperDecls = mermaidHelperEntries.map(([name, fn]) => `const ${name}=${fn.toString()};`).join("\n");
   const mermaidHelperKeys = mermaidHelperEntries.map(([name]) => name).join(", ");
   return `(() => {
+const whiteboardEditingEnabled=${JSON.stringify(whiteboardEditingEnabled)};
 const key=${JSON.stringify(key)};
 void key;
+const LAYOUT_AUDIT_OVERFLOW_EPSILON=${JSON.stringify(LAYOUT_AUDIT_OVERFLOW_EPSILON)};
+const LAYOUT_AUDIT_ERROR_OVERFLOW_PX=${JSON.stringify(LAYOUT_AUDIT_ERROR_OVERFLOW_PX)};
+const LAYOUT_WARNING_SEVERITIES=${JSON.stringify(LAYOUT_WARNING_SEVERITIES)};
+const severityForOverflow=${severityForOverflow.toString()};
+const hasBlockingLayoutWarnings=${hasBlockingLayoutWarnings.toString()};
 const deriveQueueKey=${deriveLavishQueueKey.toString()};
 const isNativeInteractiveControl=${isNativeInteractiveControl.toString()};
 const MODE_TOGGLE_HOTKEY_KEY=${JSON.stringify(MODE_TOGGLE_HOTKEY_KEY)};
@@ -1185,7 +1294,7 @@ const classifyHorizontalOverflow=${classifyHorizontalOverflow.toString()};
 const classifyVerticalOverflow=${classifyVerticalOverflow.toString()};
 ${mermaidHelperDecls}
 const mermaidHelpers={ ${mermaidHelperKeys} };
-(${createArtifactSdk.toString()})(deriveQueueKey, isNativeInteractiveControl, mermaidHelpers);
+(${createArtifactSdk.toString()})(deriveQueueKey, isNativeInteractiveControl, mermaidHelpers, whiteboardEditingEnabled);
 })();`;
 }
 

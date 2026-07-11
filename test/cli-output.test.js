@@ -1694,7 +1694,10 @@ test("stop command shuts down the running server on the configured port", async 
     const output = await stopCommand(["--port", String(server.port)]);
     assert.deepEqual(output, { server: { status: "stopped", port: server.port } });
     await server.done;
-    await assert.rejects(() => fetch(`http://127.0.0.1:${server.port}/health`), /fetch failed|ECONNREFUSED/);
+    await assert.rejects(
+      () => fetch(`http://127.0.0.1:${server.port}/health`),
+      /fetch failed|ECONNREFUSED|Unable to connect/,
+    );
   } finally {
     await server.close();
     await rm(dir, { force: true, recursive: true });

@@ -1,0 +1,5 @@
+{
+  "title": "Report",
+  "treatment": "operations-desk",
+  "sections": ["hero", "metric-grid", "verdict", "cards", "code-block"]
+}

@@ -21,7 +21,21 @@ import { resolveDesignAssetPath, serve } from "./server.js";
 import { canonicalFile, sessionKey, SessionStore } from "./session-store.js";
 import { initDefaultTelemetry } from "./telemetry.js";
 
-const COMMANDS = new Set(["open", "poll", "end", "stop", "server", "playbook", "design", "setup", "export", "share"]);
+import { newCommand } from "./new-command.js";
+const COMMANDS = new Set([
+  "open",
+  "poll",
+  "end",
+  "stop",
+  "server",
+  "playbook",
+  "design",
+  "setup",
+  "export",
+  "share",
+  "new",
+  "retry",
+]);
 // SDK-reserved built-ins (e.g. `update`) must reach runAxiCli untouched; otherwise
 // the bare-arg normalization below would rewrite them into the hidden `open` command.
 const RESERVED = new Set(RESERVED_COMMANDS);
@@ -68,6 +82,8 @@ export async function run(argv) {
         server: serverCommand,
         export: exportCommand,
         share: shareCommand,
+        new: newCommand,
+        retry: retryCommand,
       },
       getCommandHelp,
     });
@@ -247,6 +263,18 @@ async function pollCommand(args) {
       retries: 3,
       retryDelayMs: 500,
     });
+    if (response.delivery_id && response.status === "feedback") {
+      const receiptDir = path.join(
+        process.env.LAVISH_AXI_STATE_DIR || path.join(os.homedir(), ".lavish-axi"),
+        "receipts",
+      );
+      mkdirSync(receiptDir, { recursive: true });
+      writeFileSync(path.join(receiptDir, `${response.delivery_id}.json`), `${JSON.stringify(response)}\n`, "utf8");
+      await postJson(
+        `${baseUrl}/api/${sessionKey(absolute)}/feedback/${encodeURIComponent(response.delivery_id)}/ack`,
+        {},
+      );
+    }
     return createPollOutput({ file: absolute, response });
   } finally {
     waitReporter?.stop();
@@ -255,6 +283,27 @@ async function pollCommand(args) {
       process.off("SIGTERM", onPollSignal);
     }
   }
+}
+async function retryCommand(args) {
+  const file = firstPositionalArg(args, ["--delivery"]);
+  const deliveryId = flagValue(args, "--delivery");
+  if (!file || !deliveryId) {
+    throw new AxiError("HTML file and --delivery <id> are required", "VALIDATION_ERROR", [
+      "Run `lavish-axi retry <html-file> --delivery <delivery_id>`",
+    ]);
+  }
+  const absolute = await canonicalFile(file);
+  const baseUrl = await ensureServer();
+  const response = await postJson(
+    `${baseUrl}/api/${sessionKey(absolute)}/feedback/${encodeURIComponent(deliveryId)}/retry`,
+    {},
+  );
+  return {
+    file: absolute,
+    delivery_id: deliveryId,
+    status: response.status,
+    next_step: `Re-run \`lavish-axi poll ${absolute}\` to receive the recovered feedback.`,
+  };
 }
 
 export function pollWaitBannerText(file) {
@@ -296,6 +345,7 @@ export function startPollWaitReporter({
 /**
  * @returns {{
  *   session: { file: string, status: string, session_ended?: boolean, ended_by?: string },
+ *   delivery_id?: string,
  *   next_step?: string,
  *   dom_snapshot?: string,
  *   prompts?: any[],
@@ -307,6 +357,13 @@ export function createPollOutput({ file, response }) {
     throw new AxiError("No active Lavish Editor session for this file", "NOT_FOUND", [
       `Run \`lavish-axi ${file}\` first`,
     ]);
+  }
+  if (response.status === "delivery_exhausted") {
+    return {
+      session: { file, status: "delivery_exhausted" },
+      delivery_id: response.delivery_id,
+      next_step: `Feedback delivery exhausted after two attempts. The browser shows a Retry delivery action; run \`lavish-axi retry ${file} --delivery ${response.delivery_id}\` to recover it explicitly.`,
+    };
   }
   if (response.status === "feedback") {
     const layoutWarnings = Array.isArray(response.layout_warnings) ? response.layout_warnings : [];
@@ -1016,9 +1073,10 @@ export function getCommandHelp(command) {
   return COMMAND_HELP[command] || null;
 }
 
-const TOP_LEVEL_HELP = `lavish-axi - Lavish Editor AXI\n\nUsage:\n  lavish-axi\n  lavish-axi <html-file> [--no-open] [--no-gate] [--reopen]\n  lavish-axi poll <html-file> [--agent-reply "..."]\n  lavish-axi end <html-file>\n  lavish-axi export <html-file> [--out <path>]\n  lavish-axi share <html-file> [--password <pw>] [--token <t>]\n  lavish-axi stop\n  lavish-axi playbook [playbook_id]\n  lavish-axi design\n  lavish-axi setup hooks\n\n${DESIGN_SYSTEM_HINT}\n\nNote: poll long-polls indefinitely by default until the user sends feedback, ends the session, or the browser reports fresh layout_warnings, staying silent while it waits - never kill it. Fix and re-check fresh error-severity layout_warnings before involving the human; persistent or low-severity findings may be surfaced with a note when the cause is not obvious. Do not pass --timeout-ms during normal agent use; it is for tests and debugging only. If your harness limits how long a foreground command may run, run the poll as a background task; if it gets killed or times out anyway, just re-run it - queued feedback is never lost. When the user ends a session from the browser, stop polling and do not reopen it uninvited - pass --reopen to <html-file> only when the user asks for further review or something important needs their visual attention.\n\n`;
+const TOP_LEVEL_HELP = `lavish-axi - Lavish Editor AXI\n\nUsage:\n  lavish-axi\n  lavish-axi <html-file> [--no-open] [--no-gate] [--reopen]\n  lavish-axi new [--template <decision|plan|comparison|report>] [output-path]\n  lavish-axi poll <html-file> [--agent-reply "..."]\n  lavish-axi end <html-file>\n  lavish-axi export <html-file> [--out <path>]\n  lavish-axi share <html-file> [--password <pw>] [--token <t>]\n  lavish-axi stop\n  lavish-axi playbook [playbook_id]\n  lavish-axi design\n  lavish-axi setup hooks\n\n${DESIGN_SYSTEM_HINT}\n\nNote: poll long-polls indefinitely by default until the user sends feedback, ends the session, or the browser reports fresh layout_warnings, staying silent while it waits - never kill it. Fix and re-check fresh error-severity layout_warnings before involving the human; persistent or low-severity findings may be surfaced with a note when the cause is not obvious. Do not pass --timeout-ms during normal agent use; it is for tests and debugging only. If your harness limits how long a foreground command may run, run the poll as a background task; if it gets killed or times out anyway, just re-run it - queued feedback is never lost. When the user ends a session from the browser, stop polling and do not reopen it uninvited - pass --reopen to <html-file> only when the user asks for further review or something important needs their visual attention.\n\n`;
 
 const COMMAND_HELP = {
+  new: `Usage: lavish-axi new [--template <decision|plan|comparison|report>] [output-path]\n\nWrite one of the fixed, ordered decision-artifact skeletons. The default is decision. The generated skeleton is guaranteed at build time; after writing it, edit the copy for the artifact's actual content, including removing irrelevant sections. The architecture template appears only when LAVISH_AXI_ENABLE_WHITEBOARD_EDITING=1.\n`,
   open: `Usage: lavish-axi <html-file> [--no-open] [--no-gate] [--reopen]\n\nOpen or resume a Lavish Editor review session for an HTML artifact. Use --no-open when you need to ensure the server/session exists without opening another browser window. Use --no-gate to skip the open-time layout curtain for this browser open. If the user explicitly ended the session from the browser, this refuses to reopen it and returns guidance instead - pass --reopen to force it open when the user asks for further review or something important needs their visual attention. Sessions ended by the agent (\`lavish-axi end\`) reopen normally without the flag.\n`,
   poll: `Usage: lavish-axi poll <html-file> [--agent-reply "..."]\n\nThis command long-polls indefinitely for queued user prompts and browser-reported layout_warnings, then returns them to the agent. It stays silent while it waits - that is normal, never kill it. Fix and re-check fresh error-severity layout_warnings before involving the human; persistent or low-severity findings may be surfaced with a note when the cause is not obvious. Do not pass --timeout-ms during normal agent use; it is for tests and debugging only. If your harness limits how long a foreground command may run, run the poll as a background task and wait for it to finish; if it still gets killed or times out, just re-run it - queued feedback is never lost. Use --agent-reply after applying prior feedback to display your response in Lavish Editor before waiting again. When status is ended, stop polling and do not reopen the session uninvited - deliver remaining updates directly in this conversation instead.\n`,
   end: `Usage: lavish-axi end <html-file>\n\nEnd a Lavish Editor session as the agent. A session ended this way still reopens normally on the next \`lavish-axi <html-file>\`, unlike a user ending it from the browser, which requires --reopen.\n`,

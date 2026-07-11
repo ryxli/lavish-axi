@@ -1,0 +1,22 @@
+<!-- ==SECTION:actions== use for: optional follow-up calls after the main argument or decision card -->
+<section class="section">
+  <div class="actions-row">
+    <button
+      class="btn btn-primary"
+      data-lavish-action
+      data-lavish-prompt="Approved - proceed with the recommended approach."
+      onclick="window.lavish?.queuePrompt(this.dataset.lavishPrompt)"
+    >
+      Approve and continue
+    </button>
+    <button
+      class="btn btn-ghost"
+      data-lavish-action
+      data-lavish-prompt="Hold - I need to review this further before deciding."
+      onclick="window.lavish?.queuePrompt(this.dataset.lavishPrompt)"
+    >
+      Hold for review
+    </button>
+  </div>
+</section>
+<!-- ==/SECTION:actions== -->
