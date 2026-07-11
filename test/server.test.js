@@ -415,6 +415,15 @@ test("chrome overlays are absolute and leave the primary grid untouched", async 
   assert.match(css, /\.sessions-sidebar,\.evo-timeline\{[^}]*position:absolute/);
   assert.match(css, /\.layout\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--panel-w\)/);
 });
+test("chrome template contains every client-required element id", async () => {
+  const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
+  const source = await chromeClientSource();
+  const ids = [...source.matchAll(/getElementById\("([^"]+)"/g)].map((match) => match[1]);
+  for (const id of new Set(ids)) {
+    assert.match(html, new RegExp(`id="${id}"`), `missing chrome element #${id}`);
+  }
+  assert.match(html, /id="evolutionSetIdeal"/);
+});
 
 test("overflow menu shows the artifact path with a copy affordance", async () => {
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact/index.html" });
