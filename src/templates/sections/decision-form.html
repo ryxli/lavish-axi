@@ -1,0 +1,40 @@
+<!-- ==SECTION:decision-form== use for: asking the captain to choose one option and queue it once on submit -->
+<section class="section">
+  <div class="form-card">
+    <span class="form-question"><!-- QUESTION: What should the captain decide? --></span>
+    <p class="form-hint"><!-- HINT: the constraint or tradeoff framing this choice --></p>
+
+    <label class="radio-option">
+      <input type="radio" name="decision" value="option_a" />
+      <div>
+        <div class="option-title-row">
+          <span class="option-title">Option A</span><span class="rec-tag">recommended</span>
+        </div>
+        <span class="option-desc"><!-- brief description of this choice --></span>
+      </div>
+    </label>
+
+    <label class="radio-option">
+      <input type="radio" name="decision" value="option_b" />
+      <div>
+        <span class="option-title">Option B</span>
+        <span class="option-desc"><!-- brief description of this choice --></span>
+      </div>
+    </label>
+
+    <label class="radio-option">
+      <input type="radio" name="decision" value="option_c" />
+      <div>
+        <span class="option-title">Option C</span>
+        <span class="option-desc"><!-- brief description of this choice --></span>
+      </div>
+    </label>
+
+    <div class="submit-row">
+      <button class="btn btn-primary" id="submit-decision" onclick="submitDecision()">Queue this answer</button>
+      <p class="sent-msg" id="sent-msg" role="status" aria-live="polite"></p>
+    </div>
+    <p class="chat-fallback">or just tell me in chat.</p>
+  </div>
+</section>
+<!-- ==/SECTION:decision-form== -->

@@ -761,7 +761,7 @@ test("chrome client strips the internal queue key before posting prompts", async
   assert.equal(posts.length, 1);
   assert.equal(posts[0].url, "/api/abc/prompts");
   assert.deepEqual(posts[0].body, {
-    prompts: [{ prompt: "Use plan B", selector: "input#plan-b", tag: "choice", text: "Plan B" }],
+    prompts: [{ prompt: "Use plan B", selector: "input#plan-b", tag: "choice", text: "Plan B", queue_key: "plan" }],
     domSnapshot: "uid=1 body",
   });
   assert.equal(chrome.queued().length, 0);

@@ -7,6 +7,7 @@ import test from "node:test";
 process.env.LAVISH_AXI_HOST = "127.0.0.1";
 process.env.LAVISH_AXI_LINK_HOST = "127.0.0.1";
 
+process.env.LAVISH_AXI_ENABLE_WHITEBOARD_EDITING = "1";
 import {
   createWhiteboardChannelToken,
   createWhiteboardFrameHtml,

@@ -1,642 +1,136 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { SessionStore } from "../src/session-store.js";
 
-function feedbackResult(result) {
-  assert.equal(result.status, "feedback");
-  return /** @type {{ status: string, dom_snapshot: string, prompts: any[], layout_warnings?: any[], session_ended?: boolean, ended_by?: string }} */ (
-    result
-  );
+async function createStore() {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
+  const artifact = path.join(dir, "artifact.html");
+  await writeFile(artifact, "<h1>Hello</h1>");
+  const store = new SessionStore(path.join(dir, "state.json"));
+  const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
+  return { dir, store, session };
 }
 
-test("queued prompts are returned with DOM snapshot context and then cleared", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
+async function closeStore(dir) {
+  await rm(dir, { recursive: true, force: true });
+}
 
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
+test("queue keys replace structured answers and lease without destructive reads", async () => {
+  const { dir, store, session } = await createStore();
+  try {
     await store.queuePrompts(session.key, {
       domSnapshot: 'uid=1 h1 "Hello"',
-      prompts: [{ uid: "1", prompt: "Make this warmer", selector: "h1", tag: "h1", text: "Hello" }],
+      prompts: [{ prompt: "Use blue", tag: "decision", queue_key: "question:theme" }],
     });
-
-    const first = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(first.dom_snapshot, 'uid=1 h1 "Hello"');
-    assert.deepEqual(first.prompts, [
-      { uid: "1", prompt: "Make this warmer", selector: "h1", tag: "h1", text: "Hello" },
-    ]);
-
-    const second = await store.takeFeedback(session.key);
-    assert.equal(second.status, "waiting");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("queued text selection prompts preserve range anchors", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<p id='intro'>Hello <strong>bright</strong> world</p>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    const target = {
-      type: "text-range",
-      text: "lo bright wo",
-      selector: "p#intro",
-      start: { selector: "p#intro", path: [0], offset: 3 },
-      end: { selector: "p#intro", path: [2], offset: 3 },
-    };
-
     await store.queuePrompts(session.key, {
-      prompts: [
-        { uid: "", prompt: "Make this phrase punchier", selector: "p#intro", tag: "text", text: target.text, target },
-      ],
+      prompts: [{ prompt: "Use brass", tag: "decision", queue_key: "question:theme" }],
     });
-
-    const result = feedbackResult(await store.takeFeedback(session.key));
-    assert.deepEqual(result.prompts, [
-      { uid: "", prompt: "Make this phrase punchier", selector: "p#intro", tag: "text", text: target.text, target },
-    ]);
+    const first = await store.leaseFeedback(session.key, 1_000);
+    assert.equal(first.status, "feedback");
+    assert.equal(first.attempt, 1);
+    assert.equal(first.prompts.length, 1);
+    assert.equal(first.prompts[0].prompt, "Use brass");
+    assert.equal(first.prompts[0].queue_key, undefined);
+    const second = await store.leaseFeedback(session.key, 1_001);
+    assert.deepEqual(second, { status: "waiting" });
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await closeStore(dir);
   }
 });
 
-test("queued mermaid node prompts preserve node identity and drop unknown fields", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
+test("ack is idempotent and clears the delivered payload", async () => {
+  const { dir, store, session } = await createStore();
   try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<div class='mermaid'>graph TD; A-->B;</div>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    const target = {
-      type: "mermaid-node",
-      diagramId: "mermaid-7",
-      nodeId: "flowchart-HomeAgentChat-3",
-      label: "HomeAgentChat",
-      selector: "svg#mermaid-7 > g > g.node",
-      // A hostile/legacy field that must be stripped by the normalizer:
-      injected: { nested: "should not survive" },
-    };
-
-    await store.queuePrompts(session.key, {
-      prompts: [
-        {
-          uid: "",
-          prompt: "This is where the orphan happens",
-          selector: target.selector,
-          tag: "mermaid-node",
-          text: target.label,
-          target,
-        },
-      ],
-    });
-
-    const result = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(result.prompts.length, 1);
-    assert.deepEqual(result.prompts[0].target, {
-      type: "mermaid-node",
-      diagramId: "mermaid-7",
-      nodeId: "flowchart-HomeAgentChat-3",
-      label: "HomeAgentChat",
-      selector: "svg#mermaid-7 > g > g.node",
-    });
-    assert.equal(result.prompts[0].tag, "mermaid-node");
+    await store.queuePrompts(session.key, { prompts: [{ prompt: "Fix it", tag: "message" }] });
+    const delivery = await store.leaseFeedback(session.key, 10_000);
+    const ack = await store.ackFeedback(session.key, delivery.delivery_id, 10_001);
+    assert.equal(ack.status, "acked");
+    assert.equal((await store.ackFeedback(session.key, delivery.delivery_id, 10_002)).idempotent, true);
+    assert.equal((await store.leaseFeedback(session.key, 10_003)).status, "waiting");
+    const persisted = JSON.parse(await readFile(path.join(dir, "state.json"), "utf8"));
+    assert.equal(persisted.sessions[session.key].feedback_delivery.state, "acked");
+    assert.deepEqual(persisted.sessions[session.key].prompts, []);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await closeStore(dir);
   }
 });
 
-test("queued whiteboard prompts normalize the excalidraw-scene target to its fixed shape", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
+test("one lease expiry retries once, then exhausts without redelivery", async () => {
+  const { dir, store, session } = await createStore();
   try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<div class='mermaid'>graph TD; A-->B;</div>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-
-    await store.queuePrompts(session.key, {
-      prompts: [
-        {
-          uid: "",
-          prompt: "Whiteboard edits:\nMoved rectangle (Auth)",
-          selector: "",
-          tag: "whiteboard",
-          text: "Whiteboard edits",
-          target: {
-            type: "excalidraw-scene",
-            diagramIndex: "1",
-            diagramId: "mermaid-2",
-            sourceHash: "abc123def4567890",
-            scenePath: "/state/whiteboards/k/1.excalidraw",
-            previewPath: "/state/whiteboards/k/1.png",
-            imageFallback: false,
-            stats: { added: 1, removed: 0, moved: 2, relabeled: 0, drawn: 1 },
-            hostile: { nested: "should not survive" },
-          },
-        },
-      ],
-    });
-
-    const result = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(result.prompts.length, 1);
-    assert.equal(result.prompts[0].tag, "whiteboard");
-    assert.deepEqual(result.prompts[0].target, {
-      type: "excalidraw-scene",
-      diagramIndex: 1,
-      diagramId: "mermaid-2",
-      sourceHash: "abc123def4567890",
-      scenePath: "/state/whiteboards/k/1.excalidraw",
-      previewPath: "/state/whiteboards/k/1.png",
-      imageFallback: false,
-      stats: { added: 1, removed: 0, moved: 2, relabeled: 0, drawn: 1 },
-    });
+    await store.queuePrompts(session.key, { prompts: [{ prompt: "Do not lose this", tag: "message" }] });
+    const first = await store.leaseFeedback(session.key, 100_000);
+    const waiting = await store.leaseFeedback(session.key, 159_999);
+    assert.equal(waiting.status, "waiting");
+    const retry = await store.leaseFeedback(session.key, 160_000);
+    assert.equal(retry.delivery_id, first.delivery_id);
+    assert.equal(retry.attempt, 2);
+    const exhausted = await store.leaseFeedback(session.key, 220_000);
+    assert.equal(exhausted.status, "delivery_exhausted");
+    assert.equal((await store.leaseFeedback(session.key, 999_999)).status, "delivery_exhausted");
+    const recovered = await store.retryFeedback(session.key, first.delivery_id, 1_000_000);
+    assert.equal(recovered.status, "pending");
+    assert.equal((await store.leaseFeedback(session.key, 1_000_001)).attempt, 1);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await closeStore(dir);
   }
 });
 
-test("layout warnings are returned as feedback and then cleared", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
+test("new feedback creates a new generation after exhaustion", async () => {
+  const { dir, store, session } = await createStore();
   try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    const result = await store.recordLayoutWarnings(session.key, {
-      layout_warnings: [
-        {
-          selector: "html",
-          kind: "page-horizontal-overflow",
-          overflowPx: 24.5,
-          viewportWidth: 720,
-          severity: "error",
-        },
-      ],
-    });
-
-    assert.equal(result.changed, true);
-    assert.equal(result.hasWarnings, true);
-
-    const first = feedbackResult(await store.takeFeedback(session.key));
-    assert.deepEqual(first.prompts, []);
-    assert.deepEqual(first.layout_warnings, [
-      {
-        selector: "html",
-        kind: "page-horizontal-overflow",
-        overflowPx: 24.5,
-        viewportWidth: 720,
-        severity: "error",
-        persistent: false,
-      },
-    ]);
-
-    const second = await store.takeFeedback(session.key);
-    assert.equal(second.status, "waiting");
+    await store.queuePrompts(session.key, { prompts: [{ prompt: "Initial", tag: "message" }] });
+    const first = await store.leaseFeedback(session.key, 1);
+    await store.leaseFeedback(session.key, 60_001);
+    await store.leaseFeedback(session.key, 120_001);
+    const exhausted = await store.leaseFeedback(session.key, 180_001);
+    assert.equal(exhausted.status, "delivery_exhausted");
+    await store.queuePrompts(session.key, { prompts: [{ prompt: "Replacement", tag: "message", queue_key: "new" }] });
+    const next = await store.leaseFeedback(session.key, 180_002);
+    assert.equal(next.status, "feedback");
+    assert.notEqual(next.delivery_id, first.delivery_id);
+    assert.equal(next.prompts.at(-1).prompt, "Replacement");
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await closeStore(dir);
   }
 });
 
-test("a warning re-reported after the agent already received it is marked persistent", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
+test("ended sessions retain the final envelope until ACK", async () => {
+  const { dir, store, session } = await createStore();
   try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
+    await store.queuePrompts(session.key, { prompts: [{ prompt: "Final note", tag: "message" }], endSession: true });
+    const delivery = await store.leaseFeedback(session.key, 5);
+    assert.equal(delivery.session_ended, true);
+    assert.equal(delivery.ended_by, "user");
+    await store.ackFeedback(session.key, delivery.delivery_id, 6);
+    assert.equal((await store.leaseFeedback(session.key, 7)).status, "ended");
+  } finally {
+    await closeStore(dir);
+  }
+});
 
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
+test("layout warnings become a durable delivery and repeat findings become persistent", async () => {
+  const { dir, store, session } = await createStore();
+  try {
     const warning = {
-      selector: "main > header > strong",
-      kind: "overlapping-text",
-      overflowPx: 0,
+      selector: "html",
+      kind: "page-horizontal-overflow",
+      overflowPx: 24,
       viewportWidth: 720,
-      severity: "warning",
+      severity: "error",
     };
-
     await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
-    const first = feedbackResult(await store.takeFeedback(session.key));
+    const first = await store.leaseFeedback(session.key, 1);
     assert.equal(first.layout_warnings[0].persistent, false);
-
-    // Simulate a reload after an attempted fix that reports the identical finding again -
-    // the agent already saw this exact selector+kind, so it should now read as a repeat.
+    await store.ackFeedback(session.key, first.delivery_id, 2);
     await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
-    const second = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(second.layout_warnings[0].persistent, true);
+    const repeat = await store.leaseFeedback(session.key, 3);
+    assert.equal(repeat.layout_warnings[0].persistent, true);
   } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("a warning is fresh again after a clean audit resolves it", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    const warning = {
-      selector: "main > header > strong",
-      kind: "overlapping-text",
-      overflowPx: 0,
-      viewportWidth: 720,
-      severity: "warning",
-    };
-
-    await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
-    await store.takeFeedback(session.key);
-    const clean = await store.recordLayoutWarnings(session.key, { layout_warnings: [] });
-    await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
-
-    const result = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(clean.hasWarnings, false);
-    assert.equal(result.layout_warnings[0].persistent, false);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("persistence memory survives reopening the same artifact", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    const warning = {
-      selector: "main > header > strong",
-      kind: "overlapping-text",
-      overflowPx: 0,
-      viewportWidth: 720,
-      severity: "warning",
-    };
-
-    await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
-    await store.takeFeedback(session.key);
-
-    await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
-    const result = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(result.layout_warnings[0].persistent, true);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("reopening a session clears stale layout warnings", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.recordLayoutWarnings(session.key, {
-      layout_warnings: [
-        {
-          selector: "html",
-          kind: "page-horizontal-overflow",
-          overflowPx: 24,
-          viewportWidth: 720,
-          severity: "error",
-        },
-      ],
-    });
-
-    const reopened = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-
-    assert.equal(reopened.status, "open");
-    assert.deepEqual(reopened.layout_warnings, []);
-    assert.equal((await store.takeFeedback(session.key)).status, "waiting");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("empty layout warning reports clear pending warnings without waking feedback", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.recordLayoutWarnings(session.key, {
-      layout_warnings: [
-        {
-          selector: "html",
-          kind: "page-horizontal-overflow",
-          overflowPx: 24,
-          viewportWidth: 720,
-          severity: "error",
-        },
-      ],
-    });
-    const cleared = await store.recordLayoutWarnings(session.key, { layout_warnings: [] });
-
-    assert.equal(cleared.changed, true);
-    assert.equal(cleared.hasWarnings, false);
-    assert.equal((await store.takeFeedback(session.key)).status, "waiting");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("ending a session makes feedback return ended", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.endSession(session.key);
-
-    const result = await store.takeFeedback(session.key);
-    assert.equal(result.status, "ended");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("ending a session defaults to agent-initiated and takeFeedback reports who ended it", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    const ended = await store.endSession(session.key);
-
-    assert.equal(ended.ended_by, "agent");
-    const result = await store.takeFeedback(session.key);
-    assert.equal(result.status, "ended");
-    assert.equal(result.ended_by, "agent");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("ending a session as the user is recorded distinctly from an agent end", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    const ended = await store.endSession(session.key, "user");
-
-    assert.equal(ended.ended_by, "user");
-    const result = await store.takeFeedback(session.key);
-    assert.equal(result.status, "ended");
-    assert.equal(result.ended_by, "user");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("agent cleanup cannot overwrite an existing user end", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.endSession(session.key, "user");
-    const ended = await store.endSession(session.key, "agent");
-
-    assert.equal(ended.ended_by, "user");
-    const result = await store.takeFeedback(session.key);
-    assert.equal(result.status, "ended");
-    assert.equal(result.ended_by, "user");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("the final feedback batch before an end flags session_ended with who ended it", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    // Browser send-and-end: prompts land first, then the session ends before delivery.
-    await store.queuePrompts(session.key, {
-      domSnapshot: 'uid=1 h1 "Hello"',
-      prompts: [{ uid: "", prompt: "Parting feedback", selector: "", tag: "message", text: "Freeform message" }],
-    });
-    await store.endSession(session.key, "user");
-
-    const first = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(first.session_ended, true);
-    assert.equal(first.ended_by, "user");
-
-    const second = await store.takeFeedback(session.key);
-    assert.equal(second.status, "ended");
-    assert.equal(second.ended_by, "user");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("queued prompts can atomically carry a browser end intent", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.queuePrompts(session.key, {
-      domSnapshot: 'uid=1 h1 "Hello"',
-      endSession: true,
-      prompts: [{ uid: "", prompt: "Parting feedback", selector: "", tag: "message", text: "Freeform message" }],
-    });
-
-    const first = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(first.session_ended, true);
-    assert.equal(first.ended_by, "user");
-    assert.equal(first.prompts.length, 1);
-
-    const second = await store.takeFeedback(session.key);
-    assert.equal(second.status, "ended");
-    assert.equal(second.ended_by, "user");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("late prompts after a user end preserve the ended session state", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.endSession(session.key, "user");
-    await store.queuePrompts(session.key, {
-      domSnapshot: 'uid=1 h1 "Hello"',
-      prompts: [{ uid: "", prompt: "Late feedback", selector: "", tag: "message", text: "Freeform message" }],
-    });
-
-    const updated = await store.findByKey(session.key);
-    assert.equal(updated.status, "ended");
-    assert.equal(updated.ended_by, "user");
-
-    const first = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(first.session_ended, true);
-    assert.equal(first.ended_by, "user");
-    assert.equal(first.prompts[0].prompt, "Late feedback");
-
-    const second = await store.takeFeedback(session.key);
-    assert.equal(second.status, "ended");
-    assert.equal(second.ended_by, "user");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("late layout warnings do not reopen ended sessions", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.endSession(session.key);
-    await store.recordLayoutWarnings(session.key, {
-      layout_warnings: [
-        {
-          selector: "html",
-          kind: "page-horizontal-overflow",
-          overflowPx: 24,
-          viewportWidth: 720,
-          severity: "error",
-        },
-      ],
-    });
-
-    const updated = await store.findByKey(session.key);
-    assert.equal(updated.status, "ended");
-
-    const first = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(first.layout_warnings.length, 1);
-    const second = await store.takeFeedback(session.key);
-    assert.equal(second.status, "ended");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("prompts queued before ending are still delivered before the ended status", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    // Browser send-and-end with no agent listening: prompts land first, then the session ends.
-    await store.queuePrompts(session.key, {
-      domSnapshot: 'uid=1 h1 "Hello"',
-      prompts: [{ uid: "", prompt: "Parting feedback", selector: "", tag: "message", text: "Freeform message" }],
-    });
-    await store.endSession(session.key);
-
-    const first = feedbackResult(await store.takeFeedback(session.key));
-    assert.equal(first.prompts.length, 1);
-    assert.equal(first.prompts[0].prompt, "Parting feedback");
-    assert.equal(first.dom_snapshot, 'uid=1 h1 "Hello"');
-
-    // Delivering the final batch must not resurrect the session.
-    const second = await store.takeFeedback(session.key);
-    assert.equal(second.status, "ended");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("agent replies are stored in session chat history", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.addAgentReply(session.key, "Applied the requested changes.");
-
-    const updated = await store.findByKey(session.key);
-    assert.deepEqual(
-      updated.chat.map((item) => [item.role, item.text]),
-      [["agent", "Applied the requested changes."]],
-    );
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("freeform user prompts are stored in session chat history", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-store-"));
-  try {
-    const stateFile = path.join(dir, "state.json");
-    const artifact = path.join(dir, "artifact.html");
-    await writeFile(artifact, "<h1>Hello</h1>");
-
-    const store = new SessionStore(stateFile);
-    const session = await store.upsertSession(artifact, "http://localhost:4387/session/test");
-    await store.queuePrompts(session.key, {
-      prompts: [
-        { uid: "", prompt: "Please make this clearer", selector: "", tag: "message", text: "Freeform message" },
-      ],
-    });
-
-    const updated = await store.findByKey(session.key);
-    assert.deepEqual(
-      updated.chat.map((item) => [item.role, item.text]),
-      [["user", "Please make this clearer"]],
-    );
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+    await closeStore(dir);
   }
 });
