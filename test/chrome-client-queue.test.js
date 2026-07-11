@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 const sourceUrl = new URL("../src/chrome-client.js", import.meta.url);
 
-/** @typedef {{ key: string, file: string, layoutGateEnabled?: boolean, layoutGateMaxHoldMs?: number, modeToggleHotkeyKey?: string }} HarnessSessionData */
+/** @typedef {{ key: string, file: string, layoutGateEnabled?: boolean, layoutGateMaxHoldMs?: number, modeToggleHotkeyKey?: string, evolution?: object, since_last_viewed?: object }} HarnessSessionData */
 /** @type {HarnessSessionData} */
 const defaultSessionData = { key: "abc", file: "/tmp/artifact.html", modeToggleHotkeyKey: "i" };
 
@@ -1315,4 +1315,82 @@ test("whiteboard close stays responsive while overlay initialization is pending"
 
   releaseOverlaySources?.();
   await flushPromises();
+});
+test("chrome renders evolution strip state and keeps review overlays out of the queue", async () => {
+  const chrome = await createChromeHarness({
+    sessionData: {
+      ...defaultSessionData,
+      evolution: { current_rev: 4, anchor_ideal: "Calm, clear review" },
+      since_last_viewed: { changed: [{ rev: 3 }, { rev: 4 }] },
+    },
+  });
+  assert.equal(chrome.element("evolutionRev").textContent, "rev 4");
+  assert.equal(chrome.element("evolutionIdeal").textContent, "Ideal: Calm, clear review");
+  assert.equal(chrome.element("evolutionUnseen").textContent, "2 since last viewed");
+  chrome.element("copyPath").click();
+  assert.equal(chrome.queued().length, 0);
+  assert.equal(chrome.element("copyHint").classList.contains("copied"), true);
+});
+
+test("chrome sessions drawer loads current-aware rows and persists its open state", async () => {
+  const urls = [];
+  const chrome = await createChromeHarness({
+    fetchImpl: async (url) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        async json() {
+          return [
+            { key: "abc", name: "current", status: "open", updated_at: new Date().toISOString(), current: true },
+            { key: "other", name: "other", status: "ended", updated_at: new Date().toISOString(), current: false },
+          ];
+        },
+      };
+    },
+  });
+  chrome.element("sessionsButton").click();
+  await flushPromises();
+  assert.equal(urls[0], "/sessions?current=abc");
+  assert.equal(chrome.element("sessionsSidebar").hidden, false);
+  assert.match(chrome.element("sessionsList").innerHTML, /current/);
+  assert.match(chrome.element("sessionsList").innerHTML, /other/);
+  assert.match(chrome.element("sessionsList").innerHTML, /session-status-dot ended/);
+  assert.match(chrome.element("sessionsList").innerHTML, /session-current/);
+  assert.match(chrome.queued().join(""), /^$/);
+  chrome.element("sessionsClose").click();
+  assert.equal(chrome.element("sessionsSidebar").hidden, true);
+});
+
+test("chrome timeline loads reverse-chronological metadata without source diffs", async () => {
+  const urls = [];
+  const chrome = await createChromeHarness({
+    fetchImpl: async (url) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        async json() {
+          return {
+            evolution: { current_rev: 3 },
+            revisions: [
+              { rev: 1, created_at: new Date(Date.now() - 10_000).toISOString(), delta: "Birth" },
+              { rev: 3, created_at: new Date().toISOString(), ideal: "Ideal", delta: "Polish" },
+              { rev: 2, created_at: new Date(Date.now() - 5_000).toISOString(), delta: "Draft" },
+            ],
+            changelog: [{ rev: 3, type: "render", summary: "Updated artifact" }],
+          };
+        },
+      };
+    },
+  });
+  chrome.element("evolutionHistory").click();
+  await flushPromises();
+  assert.equal(urls[0], "/artifact/abc/history");
+  const html = chrome.element("evoTimelineList").innerHTML;
+  assert.ok(html.indexOf("rev 3") < html.indexOf("rev 2"));
+  assert.ok(html.indexOf("rev 2") < html.indexOf("rev 1"));
+  assert.match(html, /Current/);
+  assert.match(html, /render: Updated artifact/);
+  assert.doesNotMatch(html, /diff viewer|source diff/i);
+  chrome.element("evoTimelineClose").click();
+  assert.equal(chrome.element("evoTimeline").hidden, true);
 });

@@ -45,7 +45,7 @@ import {
 import { publishToHtmlApp } from "./html-app.js";
 import { injectLavishSdk } from "./html-transform.js";
 import { bindHost, hostForUrl, linkHost } from "./paths.js";
-import { canonicalFile, SessionStore, sessionKey } from "./session-store.js";
+import { canonicalFile, ensureEvolution, SessionStore, sessionKey } from "./session-store.js";
 
 const chromeClientUrl = new URL("./chrome-client.js", import.meta.url);
 const chromeCssUrl = new URL("./chrome.css", import.meta.url);
@@ -192,7 +192,7 @@ export async function serve({
         clearFeedbackDelivery(key, activePolls, workingSessions, events);
       }
       logEvent?.(`session opened key=${key} file=${file}`);
-      await watchSession(session, watchers, events, logEvent);
+      await watchSession(session, watchers, events, logEvent, store);
       res.json({ key, file, url, status: "opened" });
     } catch (error) {
       next(error);
@@ -499,17 +499,77 @@ export async function serve({
         res.status(404).send("Session not found");
         return;
       }
-      await watchSession(session, watchers, events, logEvent);
+      await watchSession(session, watchers, events, logEvent, store);
       const artifactHtml = await readFile(session.file, "utf8").catch(() => "");
       const { faviconTag, title } = extractArtifactHead(artifactHtml);
+      const seenRaw = req.query.seen ?? parseCookieValue(req.headers.cookie || "", `lavish_seen_${req.params.key}`);
+      const seenRev = Number.parseInt(String(seenRaw ?? ""), 10);
       res.type("html").send(
         createChromeHtml(session, {
           layoutGateEnabled: shouldEnableLayoutGate(req.query || {}),
           faviconTag,
           title: title ? `${title} · Lavish` : "Lavish Editor",
           whiteboardEditingEnabled,
+          lastSeenRev: Number.isFinite(seenRev) ? seenRev : null,
         }),
       );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/sessions", async (req, res, next) => {
+    try {
+      const currentKey = String(req.query.current || "");
+      const sessions = await store.listSessions();
+      const result = sessions
+        .map((session) => ({
+          key: session.key,
+          name: path.basename(session.file, ".html"),
+          path: session.file,
+          status: session.status,
+          updated_at: session.updated_at || null,
+          current: session.key === currentKey,
+        }))
+        .sort((a, b) => {
+          if (!a.updated_at && !b.updated_at) return 0;
+          if (!a.updated_at) return 1;
+          if (!b.updated_at) return -1;
+          return b.updated_at.localeCompare(a.updated_at);
+        });
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/artifact/:key/history", async (req, res, next) => {
+    try {
+      const session = await store.findByKey(req.params.key);
+      if (!session) {
+        res.status(404).json({ error: "session not found" });
+        return;
+      }
+      res.json({
+        revisions: session.revisions || [],
+        changelog: session.changelog || [],
+        evolution: session.evolution || null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/:key/ideal", async (req, res, next) => {
+    try {
+      const session = await store.setIdeal(req.params.key, req.body?.ideal);
+      if (!session) {
+        res.status(404).json({ error: "session not found" });
+        return;
+      }
+      res.json({
+        evolution: session.evolution,
+        changelog: session.changelog || [],
+      });
     } catch (error) {
       next(error);
     }
@@ -938,7 +998,6 @@ function sanitizeDispositionFilename(filename) {
   }).join("");
   return fallback || "artifact.export.html";
 }
-
 function encodeRfc5987Value(value) {
   return encodeURIComponent(String(value)).replace(
     /['()*]/g,
@@ -980,7 +1039,7 @@ export function resolveArtifactAsset(root, assetPath) {
   return file;
 }
 
-async function watchSession(session, watchers, events, logEvent) {
+async function watchSession(session, watchers, events, logEvent, store) {
   if (watchers.has(session.key)) {
     return;
   }
@@ -991,16 +1050,40 @@ async function watchSession(session, watchers, events, logEvent) {
   logEvent?.(`watch session=${session.key} scope=${target.scope} path=${target.path}`);
   const watcher = chokidar.watch(target.path, target.options);
   let timer = null;
+  let contentHash = null;
+  const artifactPath = path.resolve(session.file);
   watcher.on("all", (event, file) => {
     logEvent?.(`watch event=${event} session=${session.key} file=${file ?? ""}`);
     clearTimeout(timer);
-    timer = setTimeout(() => events.emit("reload", session.key), 100);
+    timer = setTimeout(async () => {
+      if (file && path.resolve(file) === artifactPath) {
+        try {
+          const content = await readFile(session.file, "utf8");
+          const nextHash = crypto.createHash("sha256").update(content).digest("hex");
+          if (nextHash !== contentHash) {
+            const snapshot = await store.snapshotRevision(session.key, { content_hash: nextHash });
+            if (snapshot) contentHash = nextHash;
+          }
+        } catch {
+          // Snapshot errors must not block the existing reload notification.
+        }
+      }
+      events.emit("reload", session.key);
+    }, 100);
   });
   watcher.on("error", (error) => {
     const message = error instanceof Error ? error.message : String(error);
     logEvent?.(`watch error session=${session.key} message=${message}`);
   });
   watchers.set(session.key, watcher);
+  try {
+    const openingContent = await readFile(session.file, "utf8");
+    const openingHash = crypto.createHash("sha256").update(openingContent).digest("hex");
+    const snapshot = await store.snapshotRevision(session.key, { content_hash: openingHash });
+    if (snapshot) contentHash = openingHash;
+  } catch {
+    // Best effort; the birth revision otherwise seeds on the first change.
+  }
 }
 
 // Watching the artifact's parent directory recursively can stall the event loop when the
@@ -1165,6 +1248,17 @@ function normalizeFlagValue(value) {
   return value === undefined || value === null ? "" : String(value).trim().toLowerCase();
 }
 
+function parseCookieValue(cookieHeader, name) {
+  if (!cookieHeader) return null;
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`(?:^|;\\s*)${escapedName}=([^;]*)`).exec(cookieHeader);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
 const LAVISH_DEFAULT_FAVICON =
   "<link rel=\"icon\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u{1F48E}</text></svg>\">";
 
@@ -1216,8 +1310,17 @@ export function createChromeHtml(
     faviconTag = LAVISH_DEFAULT_FAVICON,
     title = "Lavish Editor",
     whiteboardEditingEnabled = false,
+    lastSeenRev = null,
   } = {},
 ) {
+  session = ensureEvolution({ ...session });
+  const currentRev = session.evolution.current_rev;
+  const seenRev = lastSeenRev != null && Number.isFinite(lastSeenRev) ? lastSeenRev : currentRev;
+  const sinceLastViewed = {
+    last_seen_rev: seenRev,
+    current_rev: currentRev,
+    changed: (session.changelog || []).filter((entry) => Number(entry.rev) > seenRev),
+  };
   const sessionJson = jsonScript({
     key: session.key,
     file: session.file,
@@ -1226,6 +1329,9 @@ export function createChromeHtml(
     modeToggleHotkeyKey: MODE_TOGGLE_HOTKEY_KEY,
     feedbackDelivery: session.feedback_delivery || null,
     whiteboardEditingEnabled,
+    revision: session.revision,
+    evolution: session.evolution,
+    since_last_viewed: sinceLastViewed,
   });
   const { head: pathHead, tail: pathTail } = displayPathParts(session.file);
   const bodyClass = layoutGateEnabled ? "lavish layout-gate-active" : "lavish";

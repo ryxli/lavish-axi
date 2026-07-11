@@ -47,23 +47,27 @@ export class SessionStore {
     return this.withSessionLock(key, async () => {
       const state = await this.readState();
       const existing = state.sessions[key] || {};
-      const existingPrompts = existing.prompts || [];
+      const existingPrompts = Array.isArray(existing.prompts) ? existing.prompts : [];
       const existingStatus = existing.status === "ended" ? "open" : existing.status || "open";
       const session = {
+        ...existing,
         key,
         file: absolute,
-        url,
+        url: url ?? existing.url,
         status: existingStatus === "feedback" && existingPrompts.length === 0 ? "open" : existingStatus,
         pending_prompts: existing.pending_prompts || 0,
         prompts: existingPrompts,
-        layout_warnings: existing.layout_warnings || [],
-        delivered_layout_warning_keys: existing.delivered_layout_warning_keys || [],
+        layout_warnings: Array.isArray(existing.layout_warnings) ? existing.layout_warnings : [],
+        delivered_layout_warning_keys: Array.isArray(existing.delivered_layout_warning_keys)
+          ? existing.delivered_layout_warning_keys
+          : [],
         dom_snapshot: existing.dom_snapshot || "",
-        chat: existing.chat || [],
+        chat: Array.isArray(existing.chat) ? existing.chat : [],
         feedback_delivery: existing.feedback_delivery || null,
         ended_by: existing.ended_by,
         updated_at: new Date().toISOString(),
       };
+      ensureEvolution(session);
       state.sessions[key] = session;
       await this.writeState(state);
       return session;
@@ -105,6 +109,12 @@ export class SessionStore {
       if (changed || shouldEndSession) {
         session.feedback_delivery = createDeliveryEnvelope(session, Date.now());
       }
+      session.changelog.push({
+        rev: session.evolution.current_rev,
+        at: Date.now(),
+        kind: "feedback",
+        summary: `${normalizedPrompts.length} prompt(s)`,
+      });
       session.updated_at = new Date().toISOString();
       await this.writeState(state);
       return session;
@@ -139,6 +149,14 @@ export class SessionStore {
       session.delivered_layout_warning_keys = nextDeliveredWarningKeys;
       if (layoutWarnings.length > 0 && session.status !== "ended") session.status = "feedback";
       else if ((session.prompts || []).length === 0 && session.status !== "ended") session.status = "open";
+      if (warningsChanged) {
+        session.changelog.push({
+          rev: session.evolution.current_rev,
+          at: Date.now(),
+          kind: "layout_fix",
+          summary: `${layoutWarnings.length} warning(s)`,
+        });
+      }
       if (warningsChanged && layoutWarnings.length > 0)
         session.feedback_delivery = createDeliveryEnvelope(session, Date.now());
       session.updated_at = new Date().toISOString();
@@ -242,20 +260,100 @@ export class SessionStore {
   }
 
   async addAgentReply(key, text) {
-    const state = await this.readState();
-    const session = state.sessions[key];
-    if (!session) return null;
-    session.chat = [...(session.chat || []), { role: "agent", text: String(text || ""), at: new Date().toISOString() }];
-    session.updated_at = new Date().toISOString();
-    await this.writeState(state);
-    return session;
+    return this.withSessionLock(key, async () => {
+      const state = await this.readState();
+      const session = state.sessions[key];
+      if (!session) return null;
+      const reply = String(text || "");
+      session.chat = [...(session.chat || []), { role: "agent", text: reply, at: new Date().toISOString() }];
+      session.changelog.push({
+        rev: session.evolution.current_rev,
+        at: Date.now(),
+        kind: "agent_reply",
+        summary: reply.slice(0, 100),
+      });
+      session.updated_at = new Date().toISOString();
+      await this.writeState(state);
+      return session;
+    });
+  }
+
+  /**
+   * @param {string} key
+   * @param {{ content_hash?: string, ideal?: string, delta?: string }} [options]
+   */
+  async snapshotRevision(key, { content_hash, ideal, delta } = {}) {
+    return this.withSessionLock(key, async () => {
+      const state = await this.readState();
+      const session = state.sessions[key];
+      if (!session) return null;
+      const contentHash = String(content_hash || "");
+      const lastRevision = session.revisions.at(-1);
+      if (lastRevision && lastRevision.content_hash === contentHash) {
+        return { rev: session.revision, created_at: lastRevision.created_at, unchanged: true };
+      }
+      if (lastRevision && lastRevision.content_hash === "" && session.revisions.length === 1) {
+        lastRevision.content_hash = contentHash;
+        if (ideal !== undefined) lastRevision.ideal = String(ideal);
+        if (delta !== undefined) lastRevision.delta = String(delta);
+        session.updated_at = new Date().toISOString();
+        await this.writeState(state);
+        return { rev: lastRevision.rev, created_at: lastRevision.created_at, unchanged: false };
+      }
+      const priorRev = lastRevision ? lastRevision.rev : null;
+      const rev = Math.max(Number(session.revision) || 0, Number(priorRev) || 0) + 1;
+      const createdAt = Date.now();
+      session.revisions.push({
+        rev,
+        created_at: createdAt,
+        content_hash: contentHash,
+        prior_rev: priorRev,
+        ideal: ideal !== undefined ? String(ideal) : session.evolution.anchor_ideal,
+        delta: delta !== undefined ? String(delta) : "",
+      });
+      session.revision = rev;
+      session.evolution.current_rev = rev;
+      session.evolution.status = "evolving";
+      session.changelog.push({
+        rev,
+        at: Date.now(),
+        kind: "render",
+        summary: `rev ${rev}`,
+      });
+      session.updated_at = new Date().toISOString();
+      await this.writeState(state);
+      return { rev, created_at: createdAt, unchanged: false };
+    });
+  }
+
+  async setIdeal(key, ideal) {
+    return this.withSessionLock(key, async () => {
+      const state = await this.readState();
+      const session = state.sessions[key];
+      if (!session) return null;
+      const idealValue = String(ideal || "");
+      session.evolution.anchor_ideal = idealValue;
+      session.changelog.push({
+        rev: session.evolution.current_rev,
+        at: Date.now(),
+        kind: "ideal_set",
+        summary: idealValue,
+      });
+      session.updated_at = new Date().toISOString();
+      await this.writeState(state);
+      return session;
+    });
   }
 
   async readState() {
     try {
       const raw = await readFile(this.file, "utf8");
       const parsed = JSON.parse(raw);
-      return { sessions: parsed.sessions || {} };
+      const sessions = parsed.sessions && typeof parsed.sessions === "object" ? parsed.sessions : {};
+      for (const session of Object.values(sessions)) {
+        if (session && typeof session === "object") ensureEvolution(session);
+      }
+      return { ...parsed, sessions };
     } catch (error) {
       if (error && error.code === "ENOENT") return { sessions: {} };
       throw error;
@@ -366,4 +464,57 @@ function normalizeTarget(target) {
   if (target.type === "mermaid-node") return normalizeMermaidNodeTarget(target);
   if (target.type === EXCALIDRAW_SCENE_TARGET_TYPE) return normalizeExcalidrawSceneTarget(target);
   return JSON.parse(JSON.stringify(target));
+}
+
+export function ensureEvolution(session) {
+  if (!session || typeof session !== "object") return session;
+  let revisions = Array.isArray(session.revisions) ? session.revisions : [];
+  if (revisions.length === 0) {
+    revisions = [createInitialRevision()];
+  } else {
+    revisions = revisions.map((revision, index) => {
+      const source = revision && typeof revision === "object" ? revision : {};
+      const rev = positiveInteger(source.rev) || index + 1;
+      return {
+        ...source,
+        rev,
+        created_at: source.created_at ?? Date.now(),
+        content_hash: String(source.content_hash || ""),
+        prior_rev: source.prior_rev ?? (index > 0 ? revisions[index - 1]?.rev || rev - 1 : null),
+        ideal: String(source.ideal || ""),
+        delta: String(source.delta || ""),
+      };
+    });
+  }
+  session.revisions = revisions;
+  session.revision = positiveInteger(session.revision) || revisions.at(-1).rev;
+  const existingEvolution =
+    session.evolution && typeof session.evolution === "object" && !Array.isArray(session.evolution)
+      ? session.evolution
+      : {};
+  session.evolution = {
+    ...existingEvolution,
+    current_rev: positiveInteger(existingEvolution.current_rev) || session.revision,
+    initial_rev: positiveInteger(existingEvolution.initial_rev) || revisions[0].rev,
+    anchor_ideal: String(existingEvolution.anchor_ideal || ""),
+    status: String(existingEvolution.status || "evolving"),
+  };
+  if (!Array.isArray(session.changelog)) session.changelog = [];
+  return session;
+}
+
+function createInitialRevision() {
+  return {
+    rev: 1,
+    created_at: Date.now(),
+    content_hash: "",
+    prior_rev: null,
+    ideal: "",
+    delta: "",
+  };
+}
+
+function positiveInteger(value) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
 }

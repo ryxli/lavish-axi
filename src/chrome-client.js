@@ -13,6 +13,31 @@ function isModeToggleHotkeyEvent(event) {
   if (event.shiftKey || event.altKey) return false;
   return Boolean(event.metaKey || event.ctrlKey) && String(event.key || "").toLowerCase() === MODE_TOGGLE_HOTKEY_KEY;
 }
+function ensureReviewChrome() {
+  if (!document.body) return;
+  const root = document.createElement("div");
+  root.id = "reviewChrome";
+  root.innerHTML =
+    '<button class="sessions-control" id="sessionsButton" type="button" aria-expanded="false" ' +
+    'aria-controls="sessionsSidebar">Sessions</button>' +
+    '<div class="evolution-strip" id="evolutionStrip" aria-live="polite">' +
+    '<span class="evolution-rev" id="evolutionRev"></span>' +
+    '<span class="evolution-ideal" id="evolutionIdeal" hidden></span>' +
+    '<button class="evolution-history" id="evolutionHistory" type="button">History</button>' +
+    '<button class="evolution-set-ideal" id="evolutionSetIdeal" type="button">Set ideal</button>' +
+    '<span class="evolution-unseen" id="evolutionUnseen" hidden></span></div>' +
+    '<aside class="sessions-sidebar" id="sessionsSidebar" hidden aria-label="Sessions">' +
+    '<div class="overlay-head"><strong>Sessions</strong>' +
+    '<button class="overlay-close" id="sessionsClose" type="button" aria-label="Close sessions">×</button></div>' +
+    '<div class="sessions-list" id="sessionsList"></div></aside>' +
+    '<aside class="evo-timeline" id="evoTimeline" hidden aria-label="Evolution history">' +
+    '<div class="overlay-head"><strong>Evolution</strong>' +
+    '<button class="overlay-close" id="evoTimelineClose" type="button" aria-label="Close history">×</button></div>' +
+    '<div class="evo-timeline-list" id="evoTimelineList"></div></aside>';
+  document.body.appendChild(root);
+}
+
+ensureReviewChrome();
 
 const frame = /** @type {HTMLIFrameElement} */ (document.getElementById("artifact"));
 const panelScroll = /** @type {HTMLDivElement} */ (document.getElementById("panelScroll"));
@@ -29,6 +54,19 @@ const reloadArtifactButton = /** @type {HTMLButtonElement} */ (document.getEleme
 const copySnapshotButton = /** @type {HTMLButtonElement} */ (document.getElementById("copySnapshot"));
 const exportArtifactButton = /** @type {HTMLButtonElement} */ (document.getElementById("exportArtifact"));
 const shareArtifactButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareArtifact"));
+const sessionsButton = /** @type {HTMLButtonElement} */ (document.getElementById("sessionsButton"));
+const sessionsSidebar = /** @type {HTMLElement} */ (document.getElementById("sessionsSidebar"));
+const sessionsClose = /** @type {HTMLButtonElement} */ (document.getElementById("sessionsClose"));
+const sessionsList = /** @type {HTMLElement} */ (document.getElementById("sessionsList"));
+const evolutionStrip = /** @type {HTMLElement} */ (document.getElementById("evolutionStrip"));
+const evolutionRev = /** @type {HTMLElement} */ (document.getElementById("evolutionRev"));
+const evolutionIdeal = /** @type {HTMLElement} */ (document.getElementById("evolutionIdeal"));
+const evolutionSetIdeal = /** @type {HTMLButtonElement} */ (document.getElementById("evolutionSetIdeal"));
+const evolutionHistory = /** @type {HTMLButtonElement} */ (document.getElementById("evolutionHistory"));
+const evolutionUnseen = /** @type {HTMLElement} */ (document.getElementById("evolutionUnseen"));
+const evoTimeline = /** @type {HTMLElement} */ (document.getElementById("evoTimeline"));
+const evoTimelineClose = /** @type {HTMLButtonElement} */ (document.getElementById("evoTimelineClose"));
+const evoTimelineList = /** @type {HTMLElement} */ (document.getElementById("evoTimelineList"));
 const shareDialog = /** @type {HTMLDivElement} */ (document.getElementById("shareDialog"));
 const deliveryFailure = /** @type {HTMLElement} */ (document.getElementById("deliveryFailure"));
 const deliveryFailureText = /** @type {HTMLElement} */ (document.getElementById("deliveryFailureText"));
@@ -193,6 +231,9 @@ function updateSendState() {
   }
 }
 
+const reviewUiStorageKey = "lavish-axi:review-ui:" + key;
+let sessionsLoaded = false;
+
 function showSendHint() {
   sendHint.hidden = false;
   clearTimeout(sendHintTimer);
@@ -220,6 +261,192 @@ function toggleMenu(button, menu) {
   const open = menu.hidden;
   closeMenus();
   setMenuOpen(button, menu, open);
+}
+function relativeTime(value) {
+  const timestamp = Date.parse(String(value || ""));
+  if (!Number.isFinite(timestamp)) return "just now";
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function setOverlayState(name, open) {
+  try {
+    const state = JSON.parse(sessionStorage.getItem(reviewUiStorageKey) || "{}");
+    state[name] = Boolean(open);
+    sessionStorage.setItem(reviewUiStorageKey, JSON.stringify(state));
+  } catch {
+    // Overlay state is best effort in private browsing contexts.
+  }
+}
+
+function storedOverlayState(name) {
+  try {
+    return Boolean(JSON.parse(sessionStorage.getItem(reviewUiStorageKey) || "{}")[name]);
+  } catch {
+    return false;
+  }
+}
+
+function closeSessions() {
+  sessionsSidebar.hidden = true;
+  sessionsButton.setAttribute("aria-expanded", "false");
+  setOverlayState("sessions", false);
+}
+
+function navigateToSession(sessionKey) {
+  location.href = "/session/" + encodeURIComponent(String(sessionKey || ""));
+}
+
+function renderSessions(sessions) {
+  const rows = Array.isArray(sessions) ? sessions : [];
+  sessionsList.innerHTML = rows.length
+    ? rows
+        .map((session) => {
+          const sessionKey = String(session.key || "");
+          const name = String(session.name || session.path || sessionKey);
+          const status = String(session.status || "open").toLowerCase();
+          const current = Boolean(session.current) || sessionKey === key;
+          return (
+            '<button class="session-row' +
+            (current ? " current" : "") +
+            '" data-session-key="' +
+            escapeHtml(sessionKey) +
+            '" type="button">' +
+            '<span class="session-status-dot ' +
+            escapeHtml(status) +
+            '" aria-hidden="true"></span>' +
+            '<span class="session-row-main"><strong>' +
+            escapeHtml(name) +
+            "</strong><small>" +
+            escapeHtml(relativeTime(session.updated_at)) +
+            "</small></span>" +
+            (current ? '<span class="session-current">Current</span>' : "") +
+            "</button>"
+          );
+        })
+        .join("")
+    : '<div class="sessions-empty">No other sessions.</div>';
+  for (const row of sessionsList.querySelectorAll(".session-row")) {
+    const sessionButton = /** @type {HTMLButtonElement} */ (row);
+    sessionButton.addEventListener("click", () => navigateToSession(sessionButton.dataset.sessionKey));
+  }
+  sessionsLoaded = true;
+}
+
+async function loadSessions() {
+  const response = await fetch("/sessions?current=" + encodeURIComponent(key), { cache: "no-store" });
+  if (!response.ok) throw new Error("failed to load sessions");
+  const data = await response.json();
+  const sessions = Array.isArray(data) ? data : data.sessions;
+  renderSessions(sessions);
+  return sessions;
+}
+
+function openSessions() {
+  closeTimeline();
+  sessionsSidebar.hidden = false;
+  sessionsButton.setAttribute("aria-expanded", "true");
+  setOverlayState("sessions", true);
+  if (!sessionsLoaded) {
+    sessionsList.innerHTML = '<div class="sessions-empty">Loading sessions...</div>';
+    loadSessions().catch(() => {
+      sessionsList.innerHTML = '<div class="sessions-empty">Could not load sessions.</div>';
+    });
+  }
+}
+
+function renderEvolution(data = sessionData) {
+  const evolution = data?.evolution || {};
+  const currentRev = Number(evolution.current_rev || data?.revision || 1);
+  evolutionRev.textContent = `rev ${currentRev}`;
+  const ideal = String(evolution.anchor_ideal || "").trim();
+  evolutionIdeal.hidden = !ideal;
+  evolutionIdeal.textContent = ideal ? `Ideal: ${ideal}` : "";
+  const changed = Array.isArray(data?.since_last_viewed?.changed) ? data.since_last_viewed.changed : [];
+  evolutionUnseen.hidden = changed.length === 0;
+  evolutionUnseen.textContent = changed.length ? `${changed.length} since last viewed` : "";
+  evolutionStrip.dataset.currentRev = String(currentRev);
+}
+
+async function setIdeal() {
+  const current = String(sessionData?.evolution?.anchor_ideal || "");
+  const ideal = window.prompt("Set the anchor ideal for this artifact", current);
+  if (ideal === null) return;
+  const response = await fetch("/api/" + encodeURIComponent(key) + "/ideal", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ideal }),
+  });
+  if (!response.ok) throw new Error("failed to set ideal");
+  const result = await response.json();
+  sessionData.evolution = result.evolution || sessionData.evolution;
+  sessionData.changelog = result.changelog || sessionData.changelog;
+  renderEvolution(sessionData);
+  if (!evoTimeline.hidden) renderTimeline(result);
+}
+
+function closeTimeline() {
+  evoTimeline.hidden = true;
+  evolutionHistory.setAttribute("aria-expanded", "false");
+  setOverlayState("timeline", false);
+}
+
+function changelogSummary(entry) {
+  const type = String(entry?.type || entry?.kind || "update").replace(/_/g, " ");
+  const detail = String(entry?.summary || entry?.message || entry?.delta || "").trim();
+  return detail ? `${type}: ${detail}` : type;
+}
+
+function renderTimeline(history) {
+  const revisions = Array.isArray(history?.revisions)
+    ? history.revisions.slice().sort((a, b) => Number(b.rev) - Number(a.rev))
+    : [];
+  const changelog = Array.isArray(history?.changelog) ? history.changelog : [];
+  const currentRev = Number(history?.evolution?.current_rev || sessionData.evolution?.current_rev || 1);
+  evoTimelineList.innerHTML = revisions.length
+    ? revisions
+        .map((revision) => {
+          const rev = Number(revision.rev || 0);
+          const entries = changelog.filter((entry) => Number(entry.rev) === rev);
+          const summaries = entries.length ? entries.map(changelogSummary).join(" · ") : "Revision snapshot";
+          return (
+            '<article class="evo-card' +
+            (rev === currentRev ? " current" : "") +
+            '"><div class="evo-card-head"><strong>rev ' +
+            rev +
+            "</strong>" +
+            (rev === currentRev ? '<span class="evo-current">Current</span>' : "") +
+            '</div><div class="evo-card-meta">' +
+            escapeHtml(relativeTime(revision.created_at)) +
+            (revision.ideal ? " · Ideal: " + escapeHtml(revision.ideal) : "") +
+            '</div><div class="evo-card-delta">' +
+            escapeHtml(String(revision.delta || "No recorded delta")) +
+            '</div><div class="evo-card-summary">' +
+            escapeHtml(summaries) +
+            "</div></article>"
+          );
+        })
+        .join("")
+    : '<div class="sessions-empty">No revision history yet.</div>';
+}
+
+async function openTimeline() {
+  closeSessions();
+  evoTimeline.hidden = false;
+  evolutionHistory.setAttribute("aria-expanded", "true");
+  setOverlayState("timeline", true);
+  evoTimelineList.innerHTML = '<div class="sessions-empty">Loading history...</div>';
+  try {
+    const response = await fetch("/artifact/" + encodeURIComponent(key) + "/history", { cache: "no-store" });
+    if (!response.ok) throw new Error("failed to load history");
+    renderTimeline(await response.json());
+  } catch {
+    evoTimelineList.innerHTML = '<div class="sessions-empty">Could not load history.</div>';
+  }
 }
 
 async function copyText(text) {
@@ -1259,6 +1486,7 @@ window.addEventListener("message", (event) => {
   if (msg.type === "lavish:toggleAnnotationMode") toggleAnnotationMode();
 });
 
+evolutionSetIdeal.onclick = () => setIdeal().catch(() => {});
 loadFrame();
 
 function toggleAnnotationMode() {
@@ -1273,6 +1501,10 @@ annotationSwitch.onclick = toggleAnnotationMode;
 sendButton.onclick = () => sendQueued(false);
 sendAndEndButton.onclick = () => sendQueued(true);
 moreButton.onclick = () => toggleMenu(moreButton, moreMenu);
+sessionsButton.onclick = () => (sessionsSidebar.hidden ? openSessions() : closeSessions());
+sessionsClose.onclick = closeSessions;
+evolutionHistory.onclick = openTimeline;
+evoTimelineClose.onclick = closeTimeline;
 chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
@@ -1297,17 +1529,29 @@ endButton.onclick = () => {
   closeMenus();
   endSession();
 };
+whiteboardCloseButton.onclick = closeWhiteboard;
 document.addEventListener("mousedown", (event) => {
   const target = /** @type {Node} */ (event.target);
   if (!moreMenu.hidden && !moreWrap.contains(target)) setMenuOpen(moreButton, moreMenu, false);
+  if (
+    !sessionsSidebar.hidden &&
+    target !== sessionsSidebar &&
+    !sessionsSidebar.contains(target) &&
+    target !== sessionsButton
+  ) {
+    closeSessions();
+  }
 });
-whiteboardCloseButton.onclick = closeWhiteboard;
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (!whiteboardOverlay.hidden) {
       closeWhiteboard();
     } else if (!shareDialog.hidden) {
       closeShareDialog();
+    } else if (!sessionsSidebar.hidden) {
+      closeSessions();
+    } else if (!evoTimeline.hidden) {
+      closeTimeline();
     } else {
       closeMenus();
     }
@@ -1345,6 +1589,13 @@ events.addEventListener("reload", () => {
   });
 });
 events.addEventListener("chrome-reload", () => reloadAfterServerRestart());
+sessionsSidebar.hidden = true;
+evoTimeline.hidden = true;
+sessionsButton.setAttribute("aria-expanded", "false");
+evolutionHistory.setAttribute("aria-expanded", "false");
+renderEvolution(sessionData);
+if (storedOverlayState("sessions")) openSessions();
+if (storedOverlayState("timeline")) openTimeline();
 events.addEventListener("agent-reply", (event) => addChat("agent", JSON.parse(event.data).text));
 events.addEventListener("feedback-delivery", (event) => {
   const state = JSON.parse(event.data);
