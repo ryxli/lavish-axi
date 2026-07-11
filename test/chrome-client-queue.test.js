@@ -1348,7 +1348,7 @@ test("chrome sessions drawer loads current-aware rows and persists its open stat
       };
     },
   });
-  chrome.element("sessionsButton").click();
+  chrome.element("sessionsToggle").click();
   await flushPromises();
   assert.equal(urls[0], "/sessions?current=abc");
   assert.equal(chrome.element("sessionsSidebar").hidden, false);

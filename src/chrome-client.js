@@ -29,7 +29,7 @@ const reloadArtifactButton = /** @type {HTMLButtonElement} */ (document.getEleme
 const copySnapshotButton = /** @type {HTMLButtonElement} */ (document.getElementById("copySnapshot"));
 const exportArtifactButton = /** @type {HTMLButtonElement} */ (document.getElementById("exportArtifact"));
 const shareArtifactButton = /** @type {HTMLButtonElement} */ (document.getElementById("shareArtifact"));
-const sessionsButton = /** @type {HTMLButtonElement} */ (document.getElementById("sessionsButton"));
+const sessionsButton = /** @type {HTMLButtonElement} */ (document.getElementById("sessionsToggle"));
 const sessionsSidebar = /** @type {HTMLElement} */ (document.getElementById("sessionsSidebar"));
 const sessionsClose = /** @type {HTMLButtonElement} */ (document.getElementById("sessionsClose"));
 const sessionsList = /** @type {HTMLElement} */ (document.getElementById("sessionsList"));
@@ -269,6 +269,7 @@ function storedOverlayState(name) {
 function closeSessions() {
   sessionsSidebar.hidden = true;
   sessionsButton.setAttribute("aria-expanded", "false");
+  sessionsButton.setAttribute("aria-pressed", "false");
   setOverlayState("sessions", false);
 }
 
@@ -325,6 +326,7 @@ function openSessions() {
   closeTimeline();
   sessionsSidebar.hidden = false;
   sessionsButton.setAttribute("aria-expanded", "true");
+  sessionsButton.setAttribute("aria-pressed", "true");
   setOverlayState("sessions", true);
   if (!sessionsLoaded) {
     sessionsList.innerHTML = '<div class="sessions-empty">Loading sessions...</div>';
@@ -1567,6 +1569,7 @@ events.addEventListener("chrome-reload", () => reloadAfterServerRestart());
 sessionsSidebar.hidden = true;
 evoTimeline.hidden = true;
 sessionsButton.setAttribute("aria-expanded", "false");
+sessionsButton.setAttribute("aria-pressed", "false");
 evolutionHistory.setAttribute("aria-expanded", "false");
 renderEvolution(sessionData);
 if (storedOverlayState("sessions")) openSessions();

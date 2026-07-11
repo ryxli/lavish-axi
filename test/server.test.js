@@ -395,9 +395,12 @@ test("chrome header uses artifact identity and a cohesive review control slot", 
   assert.doesNotMatch(html, /class="brand-mark">Lavish/);
   assert.doesNotMatch(html, /class="brand-support">Editor/);
   assert.match(html, /class="header-review-controls"/);
-  assert.match(html, /class="sessions-control" id="sessionsButton"/);
-  assert.match(html, /class="evolution-strip" id="evolutionStrip"/);
-  assert.match(css, /\.header-review-controls\{[^}]*display:flex/);
+  assert.match(html, /class="bar-icon-button" id="sessionsToggle"[^>]*title="Sessions"/);
+  assert.match(html, /id="sessionsToggle"[^>]*aria-pressed="false"/);
+  assert.match(html, /<rect x="3" y="3" width="7" height="7"/);
+  assert.match(html, /<line x1="14" y1="6" x2="21" y2="6"/);
+  assert.match(css, /\.bar-icon-button\{[^}]*width:34px/);
+  assert.match(css, /\.bar-icon-button\[aria-pressed="true"\]/);
   assert.match(css, /\.session-identity\{[^}]*min-width:0/);
   assert.match(html, /class="more-button" id="moreButton"/);
   assert.match(html, /class="menu more-menu" id="moreMenu" hidden/);

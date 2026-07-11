@@ -1064,25 +1064,33 @@ body.layout-gate-active iframe#artifact {
   font-family: var(--font-mono);
   font-size: 10px;
 }
-.sessions-control,
+.bar-icon-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-label);
+  border-radius: 9px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.bar-icon-button:hover,
+.bar-icon-button[aria-expanded="true"],
+.bar-icon-button[aria-pressed="true"] {
+  border-color: var(--border-subtle);
+  background: var(--steel-700);
+  color: var(--fg);
+}
 .evolution-strip {
   position: relative;
   z-index: 1;
-}
-.sessions-control {
-  border: 1px solid var(--border-subtle);
-  border-radius: 9px;
-  background: transparent;
-  color: var(--fg-muted);
-  font: 600 var(--text-sm) var(--font-sans);
-  padding: 8px 11px;
-  cursor: pointer;
-}
-.sessions-control:hover,
-.sessions-control[aria-expanded="true"] {
-  border-color: var(--border-strong);
-  background: var(--steel-700);
-  color: var(--fg);
 }
 .evolution-strip {
   min-height: 34px;
