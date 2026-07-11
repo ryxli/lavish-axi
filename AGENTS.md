@@ -169,6 +169,12 @@ No need to explicitly document the telemetry behaviors.
   - Excalidraw's theme must be passed only through the `<Excalidraw theme>` prop, and persisted `appState` must never carry `theme` or a dark-space `viewBackgroundColor`: dark mode renders through an invert filter, so a dark background value or a second theme application double-inverts into a washed-out canvas (`src/whiteboard-core.js` strips both at the persistence boundary).
   - `/whiteboard-assets/*` must keep `Access-Control-Allow-Origin: *` (the opaque-origin frame's font fetches are CORS-gated), `Cache-Control: no-cache` (an unversioned bundle URL plus memory cache serves stale editors after upgrades), and `dotfiles: "allow"` in sendFile (a checkout under a dot-directory otherwise 403s every asset).
 
+### Chrome shell and delivery failure invariants
+
+- `createChromeHtml` in `src/server.js` is the static DOM contract for `src/chrome-client.js`: every client `getElementById` dependency must be emitted by the shell, because a missing ID can abort bootstrap before `loadFrame` and leave the iframe and layout gate stuck.
+- Header controls belong in static `.bar` slots, while Sessions is a compact extender with an absolute, non-reflow drawer in `src/chrome.css`; do not introduce competing dynamic roots or reflow the artifact and Conversation panels.
+- Delivery exhaustion is durable state: dismissal hides only the UI, retry transitions to pending, reload restores exhaustion, and fresh exhaustion re-shows it; use disposable state directories and ephemeral ports for failure-path browser smokes.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
