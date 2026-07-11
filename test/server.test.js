@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
@@ -21,10 +22,16 @@ import {
   resolveWatchTarget,
   serve,
 } from "../src/server.js";
-import { canonicalFile, sessionKey } from "../src/session-store.js";
+import { canonicalFile, SessionStore, sessionKey } from "../src/session-store.js";
 
 async function chromeClientSource() {
   return readFile(new URL("../src/chrome-client.js", import.meta.url), "utf8");
+}
+
+function parseBootstrap(html) {
+  const match = html.match(/<script id="lavish-session" type="application\/json">([\s\S]*?)<\/script>/);
+  assert.ok(match, "chrome bootstrap JSON is present");
+  return JSON.parse(match[1]);
 }
 
 async function chromeCssSource() {
@@ -934,6 +941,209 @@ test("session URLs can disable the layout gate for one open", async () => {
     assert.match(chrome, /<body class="lavish">/);
     assert.match(chrome, /id="layoutGateOverlay" hidden/);
     assert.match(chrome, /"layoutGateEnabled":false/);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("GET /sessions returns exact rows sorted by update time and marks current", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-sessions-"));
+  const first = path.join(dir, "first.html");
+  const second = path.join(dir, "second.html");
+  await writeFile(first, "<!doctype html><html><body>first</body></html>");
+  await writeFile(second, "<!doctype html><html><body>second</body></html>");
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), idleTimeoutMs: null });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const open = async (file) =>
+      (
+        await fetch(`${base}/api/sessions`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ file }),
+        })
+      ).json();
+    const firstSession = await open(first);
+    const secondSession = await open(second);
+    await fetch(`${base}/api/${secondSession.key}/prompts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompts: [{ uid: "p", prompt: "update", tag: "message" }] }),
+    });
+    const response = await fetch(`${base}/sessions?current=${firstSession.key}`);
+    assert.equal(response.status, 200);
+    const rows = await response.json();
+    assert.equal(rows.length, 2);
+    assert.deepEqual(Object.keys(rows[0]), ["key", "name", "path", "status", "updated_at", "current"]);
+    assert.deepEqual(Object.keys(rows[1]), ["key", "name", "path", "status", "updated_at", "current"]);
+    assert.equal(rows[0].key, secondSession.key);
+    assert.equal(rows[0].current, false);
+    assert.equal(rows[1].key, firstSession.key);
+    assert.equal(rows[1].current, true);
+    assert.equal(rows[0].name, "second");
+    assert.equal(rows[0].path, await canonicalFile(second));
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("POST /api/:key/ideal persists the anchor ideal through the locked store", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-ideal-api-"));
+  const artifact = path.join(dir, "ideal.html");
+  await writeFile(artifact, "<!doctype html><html><body>ideal</body></html>");
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), idleTimeoutMs: null });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const opened = await (
+      await fetch(`${base}/api/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file: artifact }),
+      })
+    ).json();
+    const response = await fetch(`${base}/api/${opened.key}/ideal`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ideal: "Keep the review decision-ready" }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.evolution.anchor_ideal, "Keep the review decision-ready");
+    assert.equal(body.changelog.at(-1).kind, "ideal_set");
+    const history = await (await fetch(`${base}/artifact/${opened.key}/history`)).json();
+    assert.equal(history.evolution.anchor_ideal, "Keep the review decision-ready");
+    assert.equal(history.changelog.at(-1).kind, "ideal_set");
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("history and session bootstrap lazily migrate old state and honor seen query/cookie", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-history-"));
+  const artifact = path.join(dir, "legacy.html");
+  const stateFile = path.join(dir, "state.json");
+  await writeFile(artifact, "<!doctype html><html><body>legacy</body></html>");
+  const canonical = await canonicalFile(artifact);
+  const key = sessionKey(canonical);
+  await writeFile(
+    stateFile,
+    `${JSON.stringify({
+      sessions: {
+        [key]: {
+          key,
+          file: canonical,
+          status: "open",
+          pending_prompts: 0,
+          prompts: [],
+          chat: [],
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+      },
+    })}\n`,
+  );
+  const server = await serve({ port: 0, stateFile, idleTimeoutMs: null });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const historyBefore = await fetch(`${base}/artifact/${key}/history`);
+    assert.equal(historyBefore.status, 200);
+    const migrated = await historyBefore.json();
+    assert.deepEqual(Object.keys(migrated), ["revisions", "changelog", "evolution"]);
+    assert.equal(migrated.revisions.length, 1);
+    assert.equal(migrated.revisions[0].rev, 1);
+    assert.equal(migrated.evolution.current_rev, 1);
+
+    const initialChrome = await fetch(`${base}/session/${key}?seen=1`);
+    assert.equal(initialChrome.status, 200);
+    const store = new SessionStore(stateFile);
+    await store.snapshotRevision(key, { content_hash: "second-render" });
+    const seenQueryChrome = await fetch(`${base}/session/${key}?seen=1`);
+    const queryBootstrap = parseBootstrap(await seenQueryChrome.text());
+    assert.equal(queryBootstrap.revision, 2);
+    assert.equal(queryBootstrap.since_last_viewed.last_seen_rev, 1);
+    assert.equal(queryBootstrap.since_last_viewed.current_rev, 2);
+    assert.equal(queryBootstrap.since_last_viewed.changed.length, 1);
+    const seenCookieChrome = await fetch(`${base}/session/${key}`, {
+      headers: { cookie: `lavish_seen_${key}=1` },
+    });
+    const cookieBootstrap = parseBootstrap(await seenCookieChrome.text());
+    assert.equal(cookieBootstrap.since_last_viewed.last_seen_rev, 1);
+    assert.equal(cookieBootstrap.since_last_viewed.changed.length, 1);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("malformed seen cookie does not break session bootstrap", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-seen-cookie-"));
+  const artifact = path.join(dir, "cookie.html");
+  await writeFile(artifact, "<!doctype html><html><body>cookie</body></html>");
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), idleTimeoutMs: null });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const opened = await (
+      await fetch(`${base}/api/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file: artifact }),
+      })
+    ).json();
+    const response = await fetch(`${base}/session/${opened.key}`, {
+      headers: { cookie: `lavish_seen_${opened.key}=%E0%A4%A` },
+    });
+    assert.equal(response.status, 200);
+    const bootstrap = parseBootstrap(await response.text());
+    assert.equal(bootstrap.since_last_viewed.changed.length, 0);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("history returns 404 for a missing session", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-history-missing-"));
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), idleTimeoutMs: null });
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.port}/artifact/missing/history`);
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: "session not found" });
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("artifact watch captures only changed content hashes as revisions", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-watch-history-"));
+  const artifact = path.join(dir, "watched.html");
+  const stateFile = path.join(dir, "state.json");
+  await writeFile(artifact, "<!doctype html><html><body>before</body></html>");
+  const server = await serve({ port: 0, stateFile, idleTimeoutMs: null });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const open = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    const { key } = await open.json();
+    const initial = await (await fetch(`${base}/artifact/${key}/history`)).json();
+    assert.equal(initial.revisions.length, 1);
+    const changed = "<!doctype html><html><body>after</body></html>";
+    await writeFile(artifact, changed);
+    const deadline = Date.now() + 3000;
+    let history = initial;
+    while (Date.now() < deadline) {
+      history = await (await fetch(`${base}/artifact/${key}/history`)).json();
+      if (history.revisions.length > 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(history.revisions.length, 2);
+    assert.equal(history.revisions[1].prior_rev, 1);
+    assert.equal(history.revisions[1].content_hash, crypto.createHash("sha256").update(changed).digest("hex"));
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });
