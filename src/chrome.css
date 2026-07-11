@@ -1033,14 +1033,43 @@ body.layout-gate-active iframe#artifact {
 .whiteboard-error[hidden] {
   display: none;
 }
+.header-review-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.session-identity {
+  display: grid;
+  min-width: 0;
+  max-width: min(34vw, 340px);
+  gap: 1px;
+}
+.session-title,
+.session-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-title {
+  color: var(--fg);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-style: italic;
+  font-weight: var(--w-semi);
+}
+.session-file {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
 .sessions-control,
 .evolution-strip {
-  position: fixed;
-  top: 8px;
-  z-index: 75;
+  position: relative;
+  z-index: 1;
 }
 .sessions-control {
-  left: 112px;
   border: 1px solid var(--border-subtle);
   border-radius: 9px;
   background: transparent;
@@ -1056,7 +1085,6 @@ body.layout-gate-active iframe#artifact {
   color: var(--fg);
 }
 .evolution-strip {
-  left: 220px;
   min-height: 34px;
   display: flex;
   align-items: center;
@@ -1099,7 +1127,7 @@ body.layout-gate-active iframe#artifact {
 }
 .sessions-sidebar,
 .evo-timeline {
-  position: fixed;
+  position: absolute;
   top: var(--bar-h);
   bottom: 0;
   z-index: 74;
@@ -1248,7 +1276,6 @@ body.layout-gate-active iframe#artifact {
     right: 0;
   }
   .evolution-strip {
-    left: 208px;
     max-width: 34vw;
   }
 }

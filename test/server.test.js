@@ -386,19 +386,34 @@ test("chrome keeps the editor usable on narrow screens", async () => {
   assert.match(css, /grid-template-rows:minmax\(0,1fr\) min\(42vh,360px\)/);
 });
 
-test("chrome top bar follows the design mock wordmark and overflow menu treatment", async () => {
-  const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
+test("chrome header uses artifact identity and a cohesive review control slot", async () => {
+  const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" }, { title: "Quarterly review · Lavish" });
   const css = await chromeCssSource();
 
-  assert.match(html, /class="brand-mark">Lavish/);
-  assert.match(html, /class="brand-support">Editor/);
-  assert.match(css, /font-family:var\(--font-serif\)/);
-  assert.match(css, /letter-spacing:\.18em/);
+  assert.match(html, /class="session-title">Quarterly review</);
+  assert.match(html, /class="session-file">artifact\.html</);
+  assert.doesNotMatch(html, /class="brand-mark">Lavish/);
+  assert.doesNotMatch(html, /class="brand-support">Editor/);
+  assert.match(html, /class="header-review-controls"/);
+  assert.match(html, /class="sessions-control" id="sessionsButton"/);
+  assert.match(html, /class="evolution-strip" id="evolutionStrip"/);
+  assert.match(css, /\.header-review-controls\{[^}]*display:flex/);
+  assert.match(css, /\.session-identity\{[^}]*min-width:0/);
   assert.match(html, /class="more-button" id="moreButton"/);
   assert.match(html, /class="menu more-menu" id="moreMenu" hidden/);
   assert.doesNotMatch(html, /class="file-input"/);
   assert.doesNotMatch(html, /class="divider"/);
   assert.doesNotMatch(html, /class="file-icon"/);
+});
+
+test("chrome overlays are absolute and leave the primary grid untouched", async () => {
+  const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
+  const css = await chromeCssSource();
+
+  assert.match(html, /id="sessionsSidebar"/);
+  assert.match(html, /id="evoTimeline"/);
+  assert.match(css, /\.sessions-sidebar,\.evo-timeline\{[^}]*position:absolute/);
+  assert.match(css, /\.layout\{[^}]*grid-template-columns:minmax\(0,1fr\) var\(--panel-w\)/);
 });
 
 test("overflow menu shows the artifact path with a copy affordance", async () => {
