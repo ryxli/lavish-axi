@@ -13,31 +13,6 @@ function isModeToggleHotkeyEvent(event) {
   if (event.shiftKey || event.altKey) return false;
   return Boolean(event.metaKey || event.ctrlKey) && String(event.key || "").toLowerCase() === MODE_TOGGLE_HOTKEY_KEY;
 }
-function ensureReviewChrome() {
-  if (!document.body) return;
-  const root = document.createElement("div");
-  root.id = "reviewChrome";
-  root.innerHTML =
-    '<button class="sessions-control" id="sessionsButton" type="button" aria-expanded="false" ' +
-    'aria-controls="sessionsSidebar">Sessions</button>' +
-    '<div class="evolution-strip" id="evolutionStrip" aria-live="polite">' +
-    '<span class="evolution-rev" id="evolutionRev"></span>' +
-    '<span class="evolution-ideal" id="evolutionIdeal" hidden></span>' +
-    '<button class="evolution-history" id="evolutionHistory" type="button">History</button>' +
-    '<button class="evolution-set-ideal" id="evolutionSetIdeal" type="button">Set ideal</button>' +
-    '<span class="evolution-unseen" id="evolutionUnseen" hidden></span></div>' +
-    '<aside class="sessions-sidebar" id="sessionsSidebar" hidden aria-label="Sessions">' +
-    '<div class="overlay-head"><strong>Sessions</strong>' +
-    '<button class="overlay-close" id="sessionsClose" type="button" aria-label="Close sessions">×</button></div>' +
-    '<div class="sessions-list" id="sessionsList"></div></aside>' +
-    '<aside class="evo-timeline" id="evoTimeline" hidden aria-label="Evolution history">' +
-    '<div class="overlay-head"><strong>Evolution</strong>' +
-    '<button class="overlay-close" id="evoTimelineClose" type="button" aria-label="Close history">×</button></div>' +
-    '<div class="evo-timeline-list" id="evoTimelineList"></div></aside>';
-  document.body.appendChild(root);
-}
-
-ensureReviewChrome();
 
 const frame = /** @type {HTMLIFrameElement} */ (document.getElementById("artifact"));
 const panelScroll = /** @type {HTMLDivElement} */ (document.getElementById("panelScroll"));
