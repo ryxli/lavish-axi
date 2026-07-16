@@ -23,10 +23,15 @@ import {
 import * as mermaidNode from "./mermaid-node.js";
 import { extractMermaidSources, mermaidSourceHash } from "./mermaid-source.js";
 import {
+  applyWhiteboardOperations,
   isValidDiagramIndex,
   isValidWhiteboardKey,
   loadWhiteboard,
+  loadWhiteboardRevisions,
   saveWhiteboard,
+  WhiteboardNotFoundError,
+  WhiteboardOperationError,
+  WhiteboardRevisionConflictError,
   writeWhiteboardFeedbackFiles,
 } from "./whiteboard-store.js";
 import {
@@ -83,8 +88,16 @@ export function defaultWhiteboardAssetsDir() {
 // Whiteboard scene saves carry full Excalidraw scenes (and, at queue time, a
 // PNG preview data URL), which outgrow the default 2 MB JSON cap. Only the
 // whiteboard write routes get the larger limit.
-export function isWhiteboardWriteApiPath(pathname) {
-  return /^\/api\/[0-9a-f]{16}\/whiteboard\/\d{1,3}(\/feedback-files)?$/.test(String(pathname || ""));
+export function isWhiteboardWriteApiPath(pathname, method = "") {
+  const path = String(pathname || "");
+  const requestMethod = String(method || "").toUpperCase();
+  const base = /^\/api\/[0-9a-f]{16}\/whiteboard\/\d{1,3}\/?$/;
+  const feedbackFiles = /^\/api\/[0-9a-f]{16}\/whiteboard\/\d{1,3}\/feedback-files\/?$/;
+  if (!requestMethod) return base.test(path) || feedbackFiles.test(path);
+  return (
+    ((requestMethod === "PUT" || requestMethod === "PATCH") && base.test(path)) ||
+    (requestMethod === "POST" && feedbackFiles.test(path))
+  );
 }
 
 export function createWhiteboardChannelToken(secret, now = Date.now()) {
@@ -151,7 +164,9 @@ export async function serve({
   const defaultJsonParser = express.json({ limit: "2mb" });
   const whiteboardJsonParser = express.json({ limit: "20mb" });
   app.use((req, res, next) =>
-    isWhiteboardWriteApiPath(req.path) ? whiteboardJsonParser(req, res, next) : defaultJsonParser(req, res, next),
+    isWhiteboardWriteApiPath(req.path, req.method)
+      ? whiteboardJsonParser(req, res, next)
+      : defaultJsonParser(req, res, next),
   );
 
   app.get("/health", (req, res) => {
@@ -789,6 +804,26 @@ export async function serve({
       next(error);
     }
   });
+  app.get("/api/:key/whiteboard/:index/revisions", async (req, res, next) => {
+    try {
+      const session = await store.findByKey(req.params.key);
+      if (!session || !isValidWhiteboardKey(req.params.key) || !isValidDiagramIndex(req.params.index)) {
+        res.status(404).json({ error: "whiteboard not found" });
+        return;
+      }
+      const afterRevision = parseWhiteboardRevisionQuery(req.query.after_revision);
+      if (afterRevision === null) {
+        res.status(400).json({ error: "invalid after_revision" });
+        return;
+      }
+      const history = await loadWhiteboardRevisions(whiteboardStateRoot, req.params.key, Number(req.params.index), {
+        afterRevision,
+      });
+      res.json(history);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.post("/api/:key/whiteboard-channel", async (req, res, next) => {
     try {
@@ -811,10 +846,9 @@ export async function serve({
     }
   });
 
-  // Writing to the local state directory is a state-changing action, so both
-  // whiteboard write routes are same-origin guarded like /share - a hostile
-  // cross-origin page must not be able to fill the state dir through the
-  // loopback server.
+  // Writing to the local state directory is a state-changing action, so whiteboard
+  // write routes are same-origin guarded like /share - a hostile cross-origin
+  // page must not be able to fill the state dir through the loopback server.
   app.put("/api/:key/whiteboard/:index", async (req, res, next) => {
     try {
       if (!isSameOriginRequest(req)) {
@@ -834,6 +868,32 @@ export async function serve({
       });
       res.json({ status: "saved" });
     } catch (error) {
+      next(error);
+    }
+  });
+  app.patch("/api/:key/whiteboard/:index", async (req, res, next) => {
+    try {
+      if (!isSameOriginRequest(req)) {
+        res.status(403).json({ error: "cross-origin whiteboard write rejected" });
+        return;
+      }
+      const session = await store.findByKey(req.params.key);
+      if (!session || !isValidWhiteboardKey(req.params.key) || !isValidDiagramIndex(req.params.index)) {
+        res.status(404).json({ error: "whiteboard not found" });
+        return;
+      }
+      const body = req.body || {};
+      const baseRevision = Object.hasOwn(body, "base_revision") ? body.base_revision : body.baseRevision;
+      const record = await applyWhiteboardOperations(whiteboardStateRoot, req.params.key, Number(req.params.index), {
+        baseRevision,
+        operations: body.operations,
+      });
+      res.json({ status: "saved", revision: record.revision });
+    } catch (error) {
+      if (isWhiteboardOperationApiError(error)) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
       next(error);
     }
   });
@@ -988,6 +1048,21 @@ export function resolveDesignAssetPath(refPath) {
 export function exportContentDisposition(file) {
   const filename = exportFileName(file);
   return `attachment; filename="${sanitizeDispositionFilename(filename)}"; filename*=UTF-8''${encodeRfc5987Value(filename)}`;
+}
+
+function parseWhiteboardRevisionQuery(value) {
+  if (value === undefined) return 0;
+  if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) return null;
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) ? revision : null;
+}
+
+function isWhiteboardOperationApiError(error) {
+  return (
+    error instanceof WhiteboardOperationError ||
+    error instanceof WhiteboardRevisionConflictError ||
+    error instanceof WhiteboardNotFoundError
+  );
 }
 
 function sanitizeDispositionFilename(filename) {
