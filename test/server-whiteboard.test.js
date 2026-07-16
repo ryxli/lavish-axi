@@ -63,8 +63,15 @@ async function startWhiteboardServer() {
 }
 
 test("isWhiteboardWriteApiPath matches only whiteboard write routes", () => {
-  assert.equal(isWhiteboardWriteApiPath("/api/0123456789abcdef/whiteboard/0"), true);
-  assert.equal(isWhiteboardWriteApiPath("/api/0123456789abcdef/whiteboard/12/feedback-files"), true);
+  const path = "/api/0123456789abcdef/whiteboard/0";
+  assert.equal(isWhiteboardWriteApiPath(path), true);
+  assert.equal(isWhiteboardWriteApiPath(`${path}/`), true);
+  assert.equal(isWhiteboardWriteApiPath(`${path}/feedback-files`), true);
+  assert.equal(isWhiteboardWriteApiPath(path, "PUT"), true);
+  assert.equal(isWhiteboardWriteApiPath(path, "PATCH"), true);
+  assert.equal(isWhiteboardWriteApiPath(`${path}/feedback-files`, "POST"), true);
+  assert.equal(isWhiteboardWriteApiPath(path, "GET"), false);
+  assert.equal(isWhiteboardWriteApiPath(`${path}/feedback-files`, "PUT"), false);
   assert.equal(isWhiteboardWriteApiPath("/api/0123456789abcdef/prompts"), false);
   assert.equal(isWhiteboardWriteApiPath("/api/0123456789abcdef/whiteboard/9999"), false);
   assert.equal(isWhiteboardWriteApiPath("/api/BAD/whiteboard/0"), false);
@@ -135,6 +142,135 @@ test("whiteboard scene round-trips through PUT and GET", async () => {
     assert.equal(loaded.whiteboard.source_hash, "hash-1");
     assert.deepEqual(loaded.whiteboard.scene, { ...scene, appState: {} });
     assert.deepEqual(loaded.whiteboard.baseline, { elements: scene.elements });
+    assert.deepEqual(Object.keys(loaded.whiteboard).sort(), ["baseline", "scene", "source_hash", "updated_at"]);
+  } finally {
+    await ctx.close();
+  }
+});
+
+test("whiteboard PATCH applies ordered append, replace, and delete operations", async () => {
+  const ctx = await startWhiteboardServer();
+  try {
+    const initialScene = {
+      elements: [
+        { id: "A", type: "rectangle" },
+        { id: "B", type: "ellipse" },
+      ],
+      appState: {},
+      files: {},
+    };
+    const put = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0`, {
+      method: "PUT",
+      headers: ctx.sameOrigin,
+      body: JSON.stringify({ source_hash: "hash-1", scene: initialScene }),
+    });
+    assert.equal(put.status, 200);
+
+    const patch = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0`, {
+      method: "PATCH",
+      headers: ctx.sameOrigin,
+      body: JSON.stringify({
+        base_revision: 1,
+        operations: [
+          { op: "replace", id: "A", value: { id: "A", type: "diamond" } },
+          { op: "delete", id: "B" },
+          { op: "append", value: { id: "C", type: "text", text: "new" } },
+        ],
+      }),
+    });
+    assert.equal(patch.status, 200);
+    assert.deepEqual(await patch.json(), { status: "saved", revision: 2 });
+
+    const loaded = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0`).then((res) => res.json());
+    assert.deepEqual(
+      loaded.whiteboard.scene.elements.map(({ id, type }) => ({ id, type })),
+      [
+        { id: "A", type: "diamond" },
+        { id: "C", type: "text" },
+      ],
+    );
+
+    const allHistory = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0/revisions?after_revision=0`).then((res) =>
+      res.json(),
+    );
+    assert.equal(allHistory.revision, 2);
+    assert.deepEqual(
+      allHistory.revisions.map(({ revision, kind }) => ({ revision, kind })),
+      [
+        { revision: 1, kind: "full" },
+        { revision: 2, kind: "operations" },
+      ],
+    );
+    assert.deepEqual(allHistory.revisions[1].operations, [
+      { op: "replace", id: "A", value: { id: "A", type: "diamond" } },
+      { op: "delete", id: "B" },
+      { op: "append", value: { id: "C", type: "text", text: "new" } },
+    ]);
+
+    const newer = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0/revisions?after_revision=1`).then((res) =>
+      res.json(),
+    );
+    assert.deepEqual(
+      newer.revisions.map((entry) => entry.revision),
+      [2],
+    );
+  } finally {
+    await ctx.close();
+  }
+});
+
+test("whiteboard PATCH and revisions reject malformed, stale, cross-origin, and invalid requests", async () => {
+  const ctx = await startWhiteboardServer();
+  try {
+    const missingScene = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/1`, {
+      method: "PATCH",
+      headers: ctx.sameOrigin,
+      body: JSON.stringify({ base_revision: 0, operations: [{ op: "append", value: { id: "A" } }] }),
+    });
+    assert.equal(missingScene.status, 404);
+
+    const put = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0`, {
+      method: "PUT",
+      headers: ctx.sameOrigin,
+      body: JSON.stringify({ scene: { elements: [{ id: "A" }], appState: {}, files: {} } }),
+    });
+    assert.equal(put.status, 200);
+
+    const malformed = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0`, {
+      method: "PATCH",
+      headers: ctx.sameOrigin,
+      body: JSON.stringify({ base_revision: 1, operations: [{ op: "append", value: { type: "rectangle" } }] }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal(typeof (await malformed.json()).error, "string");
+
+    const stale = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0`, {
+      method: "PATCH",
+      headers: ctx.sameOrigin,
+      body: JSON.stringify({ baseRevision: 0, operations: [{ op: "delete", id: "A" }] }),
+    });
+    assert.equal(stale.status, 409);
+    assert.equal(typeof (await stale.json()).error, "string");
+
+    const crossOrigin = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", origin: "https://evil.example" },
+      body: JSON.stringify({ base_revision: 1, operations: [{ op: "delete", id: "A" }] }),
+    });
+    assert.equal(crossOrigin.status, 403);
+
+    const invalidQuery = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/0/revisions?after_revision=-1`);
+    assert.equal(invalidQuery.status, 400);
+    for (const value of [" ", "0x10", "1e2", "1.1", "9007199254740992"]) {
+      const response = await fetch(
+        `${ctx.base}/api/${ctx.key}/whiteboard/0/revisions?after_revision=${encodeURIComponent(value)}`,
+      );
+      assert.equal(response.status, 400);
+    }
+
+    const missingHistory = await fetch(`${ctx.base}/api/${ctx.key}/whiteboard/1/revisions?after_revision=0`);
+    assert.equal(missingHistory.status, 200);
+    assert.deepEqual(await missingHistory.json(), { revision: 0, revisions: [] });
   } finally {
     await ctx.close();
   }
