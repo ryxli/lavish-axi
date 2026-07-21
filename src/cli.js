@@ -40,8 +40,9 @@ const COMMANDS = new Set([
 // the bare-arg normalization below would rewrite them into the hidden `open` command.
 const RESERVED = new Set(RESERVED_COMMANDS);
 const DESCRIPTION =
-  "Lavish Editor helps agents turn rich HTML artifacts into collaborative human review surfaces. Whenever you are about to give user a complex response that will be easier to understand via a rich / interactive page, consider using Lavish Editor. " +
-  "First generate an interactive HTML artifact according to user request, then run `lavish-axi <html-file>` so the user can visually review it, annotate elements or selected text, queue prompts, and send feedback back through `lavish-axi poll`.";
+  "Lavish Editor turns explicitly requested rich HTML artifacts into collaborative human review surfaces. " +
+  "Use it only when the user invokes `/lavish`, names Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. " +
+  "Otherwise answer in plain chat. Generate the requested artifact, then run `lavish-axi <html-file>` so the user can visually review it, annotate elements or selected text, queue prompts, and send feedback back through `lavish-axi poll`.";
 export const POLL_WAKE_PATH_RULES = Object.freeze([
   "Keep the poll in the foreground by default and let it return the feedback directly to the agent.",
   "A background poll is allowed only through a harness-native tracked background-job facility whose completion result is guaranteed to resume or notify the same agent.",
@@ -183,7 +184,7 @@ export function createHomeOutput({ bin, sessions, includeSessions = true, agent 
       "Run `lavish-axi stop` to shut down the background server (it also self-stops when idle or after the last session ends with nothing connected)",
       `Run \`lavish-axi playbook <playbook_id>\` for focused artifact guidance. ${PLAYBOOK_ROUTER_HELP}`,
       DESIGN_SYSTEM_HINT,
-      "Use lavish-axi when the user asks for a visual artifact, HTML explainer, interactive prototype, review surface, product or technical plan, comparison, report, or browser-based feedback loop",
+      "Use Lavish only when the user explicitly invokes `/lavish`, names Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself. Otherwise answer in plain chat.",
     ],
   };
 }

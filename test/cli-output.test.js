@@ -82,9 +82,9 @@ test("home output teaches agents when and how to use Lavish Editor", () => {
 
   assert.equal(output.bin, "~/.local/bin/lavish-axi");
   assert.match(output.description, /Lavish Editor/);
-  assert.match(output.description, /complex response/);
-  assert.match(output.description, /consider using Lavish Editor/);
-  assert.match(output.description, /First generate an interactive HTML artifact/);
+  assert.match(output.description, /explicitly requested rich HTML artifacts/);
+  assert.match(output.description, /browser-based visual artifact/);
+  assert.match(output.description, /Otherwise answer in plain chat/);
   assert.deepEqual(output.sessions, []);
   assert.equal("use_cases" in output, false);
   assert.equal("example_use_cases" in output, false);
@@ -115,7 +115,14 @@ test("home output teaches agents when and how to use Lavish Editor", () => {
   assert.ok(output.help.includes(DESIGN_SYSTEM_HINT), "home help carries the single-sourced design rule verbatim");
   assert.ok(!output.help.some((item) => item.includes('<meta name="lavish-design" content="off">')));
   assert.ok(!output.help.some((item) => item.includes("Known IDs")));
-  assert.ok(output.help.some((item) => item.includes("technical plan")));
+  assert.ok(
+    output.help.some(
+      (item) =>
+        item.includes("explicitly invokes `/lavish`") &&
+        item.includes("names Lavish") &&
+        item.includes("not a trigger by itself"),
+    ),
+  );
 });
 
 test("the design-priority rule is single-sourced and keeps its three-step semantics", () => {
