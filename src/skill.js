@@ -61,8 +61,9 @@ In restricted subprocess sandboxes, CI, or agent harnesses where \`bunx lavish-a
 
 $ARGUMENTS
 
-If the user explicitly invoked \`/lavish\`, build an HTML artifact for \`$ARGUMENTS\` now.
-If \`$ARGUMENTS\` is empty, derive the subject from the current conversation.
+If \`$ARGUMENTS\` is non-empty, the user explicitly invoked \`/lavish\`.
+Build an HTML artifact for that request now.
+If \`$ARGUMENTS\` is empty but the user explicitly invoked \`/lavish\`, derive the subject from the current conversation.
 If this skill loaded organically, continue only when the user's request explicitly names Lavish or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
 Otherwise, stop and answer in plain chat.
 

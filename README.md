@@ -82,7 +82,7 @@ Lavish is an AXI, so any capable agent can run the CLI directly with nothing ins
 Just tell your agent:
 
 ```
-Use `npx -y lavish-axi` to write a product or technical plan for what we discussed.
+Use `bunx lavish-axi` to write a product or technical plan for what we discussed.
 ```
 
 ### Session hook
