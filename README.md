@@ -1,19 +1,13 @@
 <h1 align="center">lavish-axi</h1>
 <p align="center">
-  <a href="https://github.com/kunchenguid/lavish-axi/actions/workflows/ci.yml"
-    ><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/kunchenguid/lavish-axi/ci.yml?style=flat-square&label=ci"
+  <a href="https://github.com/ryxli/lavish-axi/actions/workflows/ci.yml"
+    ><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ryxli/lavish-axi/ci.yml?style=flat-square&label=ci"
   /></a>
-  <a href="https://github.com/kunchenguid/lavish-axi/actions/workflows/release-please.yml"
-    ><img alt="Release" src="https://img.shields.io/github/actions/workflow/status/kunchenguid/lavish-axi/release-please.yml?style=flat-square&label=release"
-  /></a>
-  <a href="https://www.npmjs.com/package/lavish-axi"
-    ><img alt="npm" src="https://img.shields.io/npm/v/lavish-axi?style=flat-square"
+  <a href="https://github.com/ryxli/lavish-axi/actions/workflows/release-please.yml"
+    ><img alt="Release" src="https://img.shields.io/github/actions/workflow/status/ryxli/lavish-axi/release-please.yml?style=flat-square&label=release"
   /></a>
   <a href="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
     ><img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
-  /></a>
-  <a href="https://x.com/kunchenguid"
-    ><img alt="X" src="https://img.shields.io/badge/X-@kunchenguid-black?style=flat-square"
   /></a>
   <a href="https://discord.gg/Wsy2NpnZDu"
     ><img alt="Discord" src="https://img.shields.io/discord/1439901831038763092?style=flat-square&label=discord"
@@ -39,7 +33,7 @@ Lavish Editor opens agent-generated HTML files in a local browser, lets you pinp
 
 Lavish Editor is an [AXI](https://axi.md), which means -
 
-- It's just a CLI any capable agent can run without setup.
+- It's just a CLI any capable agent can run after the standalone checkout is installed globally.
 - It's optimized for agent ergonomics. TOON output, long polling, and contextual disclosure making it highly token efficient.
 - The skill and hooks below only handle discovery; agents learn to use the AXI by using it.
 
@@ -48,12 +42,11 @@ Lavish Editor is an [AXI](https://axi.md), which means -
 Install the Lavish skill in the [Agent Skills](https://agentskills.io) format with [`bunx skills`](https://github.com/vercel-labs/skills):
 
 ```sh
-bunx skills add kunchenguid/lavish-axi --skill lavish
+bunx skills add ryxli/lavish-axi --skill lavish
 ```
 
-That is the entire setup - no package install needed.
-The skill teaches your agent to run Lavish through `bunx lavish-axi`, so the CLI comes along on demand.
-In restricted subprocess sandboxes, CI, or agent harnesses where `bunx lavish-axi` exits opaquely (for example with status 216), the skill also documents direct installed-copy fallbacks through the local or global npm install path.
+Install the CLI from a local checkout as described below before invoking the skill.
+The skill teaches your agent to run Lavish through `bunx lavish-axi`.
 Its frontmatter also includes Hermes Agent metadata, so Hermes-compatible harnesses can categorize and surface it as a first-class productivity skill.
 This installs the public `lavish` skill.
 The repository also contains an internal `lavish-design` brand skill for maintainers; default `bunx skills add ... --list` and skills.sh discovery hide it unless `INSTALL_INTERNAL_SKILLS=1` is set.
@@ -69,21 +62,24 @@ It creates an artifact only for an explicit `/lavish`, a request that explicitly
 A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself.
 
 By default the skill lands in the current project's universal skills directory at `.agents/skills/lavish`.
-Run `bunx skills add kunchenguid/lavish-axi --skill lavish --global --yes` to install it for all projects at `~/.agents/skills/lavish`.
+Run `bunx skills add ryxli/lavish-axi --skill lavish --global --yes` to install it for all projects at `~/.agents/skills/lavish`.
 Run `bunx skills update lavish --global --yes` to refresh that global installation after an update.
 
 ## Other Ways to Use Lavish
 
 The skill is the recommended path, but it is not the only one.
 
-### Zero setup
+### Local checkout
 
-Lavish is an AXI, so any capable agent can run the CLI directly with nothing installed at all.
-Just tell your agent:
+Clone and install the CLI globally from the standalone repository:
 
+```sh
+git clone https://github.com/ryxli/lavish-axi.git
+cd lavish-axi
+bun install --global .
+lavish-axi --version
 ```
 Use `bunx lavish-axi` to write a product or technical plan for what we discussed.
-```
 
 ### Session hook
 
@@ -91,7 +87,6 @@ Want Lavish's ambient context - including your live open sessions - fed into eve
 Install the CLI globally and opt into the hook:
 
 ```sh
-npm install -g lavish-axi
 lavish-axi setup hooks
 ```
 
@@ -99,15 +94,6 @@ This installs a `SessionStart` hook for **Claude Code**, **Codex**, **OpenCode**
 Unlike the skill, the hook also shows your live open sessions, so a fresh agent session can resume an in-flight review.
 **Restart your agent session after running this** so the new hook takes effect.
 
-### From source
-
-```sh
-git clone https://github.com/kunchenguid/lavish-axi.git
-cd lavish-axi
-pnpm install --frozen-lockfile
-pnpm run build
-pnpm link
-```
 
 ## How It Works
 
