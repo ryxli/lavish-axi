@@ -64,7 +64,7 @@ Then, in agents that expose skills as slash commands (Claude Code, for example),
 ```
 
 The skill defaults to plain chat.
-It creates an artifact only for an explicit `/lavish`, a request naming Lavish, or a request for an HTML, interactive, annotatable, or browser-based visual artifact.
+It creates an artifact only for an explicit `/lavish`, a request that explicitly asks to use Lavish, or a request for an HTML, interactive, annotatable, or browser-based visual artifact.
 A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself.
 
 By default the skill lands in the current project's universal skills directory at `.agents/skills/lavish`.
