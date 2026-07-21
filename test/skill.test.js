@@ -34,8 +34,11 @@ test("createSkillMarkdown preserves explicit /lavish invocation with optional ar
   const body = md.slice(md.indexOf("\n---\n", 4) + 5);
 
   assert.ok(body.includes("$ARGUMENTS"), "body consumes slash-command arguments");
-  assert.match(body, /explicitly invoked `\/lavish`/);
-  assert.match(body, /If `\$ARGUMENTS` is empty, derive the subject from the current conversation/);
+  assert.match(body, /If `\$ARGUMENTS` is non-empty, the user explicitly invoked `\/lavish`/);
+  assert.match(
+    body,
+    /If `\$ARGUMENTS` is empty but the user explicitly invoked `\/lavish`, derive the subject from the current conversation/,
+  );
 });
 
 test("createSkillMarkdown limits activation to explicit artifact requests", () => {
