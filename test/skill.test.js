@@ -46,7 +46,7 @@ test("createSkillMarkdown limits activation to explicit artifact requests", () =
   const whenToUse = md.slice(md.indexOf("## When to use"), md.indexOf("## Workflow"));
 
   assert.match(SKILL_DESCRIPTION, /explicitly invokes `\/lavish`/);
-  assert.match(SKILL_DESCRIPTION, /names Lavish/);
+  assert.match(SKILL_DESCRIPTION, /explicitly asks to use Lavish/);
   assert.match(SKILL_DESCRIPTION, /HTML, interactive, annotatable, or browser-based visual artifact/);
   assert.doesNotMatch(
     SKILL_DESCRIPTION,
@@ -56,6 +56,7 @@ test("createSkillMarkdown limits activation to explicit artifact requests", () =
     whenToUse,
     /A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself/,
   );
+  assert.doesNotMatch(md, /names Lavish|request naming Lavish/i);
   assert.match(whenToUse, /answer in plain chat/);
 });
 

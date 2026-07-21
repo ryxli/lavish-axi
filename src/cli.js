@@ -41,7 +41,7 @@ const COMMANDS = new Set([
 const RESERVED = new Set(RESERVED_COMMANDS);
 const DESCRIPTION =
   "Lavish Editor turns explicitly requested rich HTML artifacts into collaborative human review surfaces. " +
-  "Use it only when the user invokes `/lavish`, names Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. " +
+  "Use it only when the user invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. " +
   "Otherwise answer in plain chat. Generate the requested artifact, then run `lavish-axi <html-file>` so the user can visually review it, annotate elements or selected text, queue prompts, and send feedback back through `lavish-axi poll`.";
 // Inlined at build time from package.json; falls back to reading package.json so source-run tests work.
 export const VERSION =
@@ -160,7 +160,7 @@ export function createHomeOutput({ bin, sessions, includeSessions = true }) {
       "Run `lavish-axi stop` to shut down the background server (it also self-stops when idle or after the last session ends with nothing connected)",
       `Run \`lavish-axi playbook <playbook_id>\` for focused artifact guidance. ${PLAYBOOK_ROUTER_HELP}`,
       DESIGN_SYSTEM_HINT,
-      "Use Lavish only when the user explicitly invokes `/lavish`, names Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself. Otherwise answer in plain chat.",
+      "Use Lavish only when the user explicitly invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself. Otherwise answer in plain chat.",
     ],
   };
 }

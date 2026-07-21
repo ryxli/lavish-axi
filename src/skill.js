@@ -4,7 +4,7 @@ import { PLAYBOOK_ROUTER_HELP } from "./playbooks.js";
 // Trigger string agents match against to auto-load the skill.
 // Keep activation explicit so ordinary complex responses stay in chat.
 export const SKILL_DESCRIPTION =
-  "Create a rich, reviewable HTML artifact only when the user explicitly invokes `/lavish`, names Lavish, " +
+  "Create a rich, reviewable HTML artifact only when the user explicitly invokes `/lavish`, explicitly asks to use Lavish, " +
   "or asks for an HTML, interactive, annotatable, or browser-based visual artifact. Otherwise answer in plain chat.";
 
 function skillCommandText(text) {
@@ -63,7 +63,7 @@ $ARGUMENTS
 If \`$ARGUMENTS\` is non-empty, the user explicitly invoked \`/lavish\`.
 Build an HTML artifact for that request now.
 If \`$ARGUMENTS\` is empty but the user explicitly invoked \`/lavish\`, derive the subject from the current conversation.
-If this skill loaded organically, continue only when the user's request explicitly names Lavish or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
+If this skill loaded organically, continue only when the user's request explicitly asks to use Lavish or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
 Otherwise, stop and answer in plain chat.
 
 ## When to use
