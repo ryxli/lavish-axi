@@ -119,10 +119,12 @@ test("home output teaches agents when and how to use Lavish Editor", () => {
     output.help.some(
       (item) =>
         item.includes("explicitly invokes `/lavish`") &&
-        item.includes("names Lavish") &&
+        item.includes("explicitly asks to use Lavish") &&
         item.includes("not a trigger by itself"),
     ),
   );
+  assert.doesNotMatch(output.description, /names Lavish|request naming Lavish/i);
+  assert.ok(!output.help.some((item) => /names Lavish|request naming Lavish/i.test(item)));
 });
 
 test("the design-priority rule is single-sourced and keeps its three-step semantics", () => {

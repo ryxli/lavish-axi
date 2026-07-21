@@ -1,6 +1,6 @@
 ---
 name: lavish
-description: Create a rich, reviewable HTML artifact only when the user explicitly invokes `/lavish`, names Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. Otherwise answer in plain chat.
+description: Create a rich, reviewable HTML artifact only when the user explicitly invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. Otherwise answer in plain chat.
 argument-hint: <what the artifact should show>
 author: Kun Chen (kunchenguid)
 metadata:
@@ -12,7 +12,7 @@ metadata:
 # Lavish Editor
 
 Lavish Editor turns explicitly requested rich HTML artifacts into collaborative human review surfaces.
-Use it only when the user invokes `/lavish`, names Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
+Use it only when the user invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
 Otherwise answer in plain chat.
 Generate the requested artifact, then run `bunx lavish-axi <html-file>` so the user can visually review it, annotate elements or selected text, queue prompts, and send feedback back through `bunx lavish-axi poll`.
 
@@ -28,12 +28,12 @@ $ARGUMENTS
 If `$ARGUMENTS` is non-empty, the user explicitly invoked `/lavish`.
 Build an HTML artifact for that request now.
 If `$ARGUMENTS` is empty but the user explicitly invoked `/lavish`, derive the subject from the current conversation.
-If this skill loaded organically, continue only when the user's request explicitly names Lavish or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
+If this skill loaded organically, continue only when the user's request explicitly asks to use Lavish or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
 Otherwise, stop and answer in plain chat.
 
 ## When to use
 
-Use Lavish only when the user explicitly invokes `/lavish`, names Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
+Use Lavish only when the user explicitly invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
 A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself.
 Otherwise answer in plain chat.
 
