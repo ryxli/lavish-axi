@@ -16,14 +16,14 @@ test("check script runs all verification commands", async () => {
   ]);
 });
 
-test("installable skill stays in sync with the no-args home output", async () => {
+test("generated skill stays in sync with the no-args home output", async () => {
   const { createSkillMarkdown } = await import("../src/skill.js");
   const committed = await readFile(new URL("../skills/lavish/SKILL.md", import.meta.url), "utf8");
 
-  assert.equal(committed, createSkillMarkdown(), "run `npm run build:skill` and commit the result");
+  assert.equal(committed, createSkillMarkdown(), "run `bun run build:skill` and commit the result");
 });
 
-test("published package includes the installable skill", async () => {
+test("package manifest includes the installable skill", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
   assert.ok(packageJson.files.includes("skills/lavish"));
@@ -44,7 +44,7 @@ test("public lavish skill is not marked internal", async () => {
   assert.doesNotMatch(frontmatter, /^metadata:\n {2}internal: true$/m);
 });
 
-test("build copies local design assets for published artifact injection", async () => {
+test("artifact build copies local design assets", async () => {
   const buildScript = await readFile(new URL("../scripts/build.js", import.meta.url), "utf8");
 
   assert.match(buildScript, /daisyui\.css/);
@@ -58,9 +58,10 @@ test("package metadata matches the standalone GitHub repository", async () => {
   assert.equal(packageJson.repository.url, "git+https://github.com/ryxli/lavish-axi.git");
   assert.equal(packageJson.bugs.url, "https://github.com/ryxli/lavish-axi/issues");
   assert.equal(packageJson.homepage, "https://github.com/ryxli/lavish-axi#readme");
+  assert.equal(packageJson.publishConfig, undefined);
 });
 
-test("pnpm lock root importer matches the publish manifest", async () => {
+test("pnpm lock root importer matches the package manifest", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const pnpmLock = await readFile(new URL("../pnpm-lock.yaml", import.meta.url), "utf8");
 
@@ -72,7 +73,7 @@ test("pnpm lock root importer matches the publish manifest", async () => {
   }
 });
 
-test("release workflow publishes from the release tag checkout", async () => {
+test("release workflow checks out the release tag", async () => {
   const workflow = await readFile(new URL("../.github/workflows/release-please.yml", import.meta.url), "utf8");
 
   assert.match(
@@ -81,7 +82,7 @@ test("release workflow publishes from the release tag checkout", async () => {
   );
 });
 
-test("release workflow uses repository telemetry variables for the build", async () => {
+test("release workflow uses repository telemetry variables and skips registry publishing", async () => {
   const workflow = await readFile(new URL("../.github/workflows/release-please.yml", import.meta.url), "utf8");
 
   assert.match(
@@ -89,4 +90,6 @@ test("release workflow uses repository telemetry variables for the build", async
     /run: pnpm run build\n\s+if: \$\{\{ steps\.release\.outputs\.release_created \}\}\n\s+env:\n\s+LAVISH_AXI_UMAMI_HOST: \$\{\{ vars\.LAVISH_AXI_UMAMI_HOST \}\}\n\s+LAVISH_AXI_UMAMI_WEBSITE_ID: \$\{\{ vars\.LAVISH_AXI_UMAMI_WEBSITE_ID \}\}/,
   );
   assert.doesNotMatch(workflow, /npm publish/);
+  assert.doesNotMatch(workflow, /id-token: write/);
+  assert.doesNotMatch(workflow, /registry-url:/);
 });
