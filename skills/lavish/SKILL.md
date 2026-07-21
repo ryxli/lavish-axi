@@ -2,7 +2,6 @@
 name: lavish
 description: Create a rich, reviewable HTML artifact only when the user explicitly invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. Otherwise answer in plain chat.
 argument-hint: <what the artifact should show>
-author: Kun Chen (kunchenguid)
 metadata:
   hermes:
     tags: [html, review, artifacts, visualization]
@@ -16,7 +15,7 @@ Use it only when the user invokes `/lavish`, explicitly asks to use Lavish, or a
 Otherwise answer in plain chat.
 Generate the requested artifact, then run `bunx lavish-axi <html-file>` so the user can visually review it, annotate elements or selected text, queue prompts, and send feedback back through `bunx lavish-axi poll`.
 
-You do not need lavish-axi installed globally.
+Install the lavish-axi CLI globally from the standalone ryxli/lavish-axi checkout before using this skill.
 Invoke it with `bunx lavish-axi <html-file>`.
 Run every follow-up command with the `bunx lavish-axi ...` prefix.
 In restricted subprocess sandboxes, CI, or agent harnesses where `bunx lavish-axi` exits opaquely (for example with status 216), use an already-installed copy directly: `node "$(npm root)/lavish-axi/dist/cli.mjs" <html-file>` for a local install, `node "$(npm root -g)/lavish-axi/dist/cli.mjs" <html-file>` for a global install, or the bare `lavish-axi <html-file>` bin after installing once.

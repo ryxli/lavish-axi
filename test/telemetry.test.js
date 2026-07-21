@@ -60,14 +60,14 @@ test("telemetry uses env values before build-time defaults", () => {
   });
 });
 
-test("telemetry disables when no website id is configured", () => {
+test("telemetry disables when no host is configured", () => {
   const config = resolveTelemetryConfig({
-    env: {},
-    buildHost: "https://build.example",
+    env: { LAVISH_AXI_UMAMI_WEBSITE_ID: "site-1" },
+    buildHost: "",
     buildWebsiteID: "",
   });
 
-  assert.equal(config.enabled, false);
+  assert.deepEqual(config, { enabled: false, host: "", websiteID: "" });
 });
 
 test("telemetry sends anonymous Umami event payloads", async () => {
