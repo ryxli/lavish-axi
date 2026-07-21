@@ -21,12 +21,19 @@ process.env.LAVISH_AXI_TEMPLATES_DIR = fileURLToPath(new URL("../dist/templates/
 
 const expectedTemplates = Object.keys(contractsForEnvironment(false)).sort();
 
-test("createNewOutput returns file, template, and next_step", () => {
+test("createNewOutput orders editing guidance before the bunx open command", () => {
   const output = createNewOutput({ file: ".lavish/decision.html", template: "decision" });
   assert.equal(output.file, ".lavish/decision.html");
   assert.equal(output.template, "decision");
   assert.match(output.next_step, /decision/);
-  assert.match(output.next_step, /lavish-axi .lavish\/decision\.html/);
+
+  const editIndex = output.next_step.indexOf("Edit the content placeholders");
+  const removeIndex = output.next_step.indexOf("remove irrelevant sections");
+  const openIndex = output.next_step.indexOf("bunx lavish-axi .lavish/decision.html");
+  assert.ok(editIndex >= 0, "instructs editing generated placeholders");
+  assert.ok(removeIndex > editIndex, "removes irrelevant sections after editing");
+  assert.ok(openIndex > removeIndex, "opens with bunx only after content editing");
+  assert.doesNotMatch(output.next_step, /`lavish-axi /);
 });
 
 test("parseNewArgs supports value and equals forms", () => {

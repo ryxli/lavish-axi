@@ -59,7 +59,7 @@ export function createNewOutput({ file, template }) {
   return {
     file,
     template,
-    next_step: `Template "${template}" written to ${file}. Run \`lavish-axi ${file}\` to open it in Lavish Editor, then fill in the content placeholders.`,
+    next_step: `Template "${template}" written to ${file}. Edit the content placeholders, remove irrelevant sections, then run \`bunx lavish-axi ${file}\` to open it in Lavish Editor.`,
   };
 }
 
