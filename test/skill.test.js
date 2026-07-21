@@ -5,7 +5,7 @@ import { createHomeOutput } from "../src/cli.js";
 import { SKILL_DESCRIPTION, createSkillMarkdown } from "../src/skill.js";
 
 function skillCommandText(text) {
-  return text.replaceAll("`lavish-axi", "`npx -y lavish-axi");
+  return text.replaceAll("`lavish-axi", "`bunx lavish-axi");
 }
 
 test("createSkillMarkdown emits valid frontmatter naming the lavish skill", () => {
@@ -29,19 +29,50 @@ test("createSkillMarkdown emits Hermes Agent metadata in frontmatter", () => {
   assert.doesNotMatch(frontmatter, /^version:/m, "version is omitted to avoid release churn");
 });
 
-test("createSkillMarkdown handles explicit /lavish invocation arguments", () => {
+test("createSkillMarkdown preserves explicit /lavish invocation with optional arguments", () => {
   const md = createSkillMarkdown();
   const body = md.slice(md.indexOf("\n---\n", 4) + 5);
 
   assert.ok(body.includes("$ARGUMENTS"), "body consumes slash-command arguments");
-  assert.match(body, /empty/i, "explains the model-invoked case where no arguments are passed");
+  assert.match(body, /explicitly invoked `\/lavish`/);
+  assert.match(body, /If `\$ARGUMENTS` is empty, derive the subject from the current conversation/);
+});
+
+test("createSkillMarkdown limits activation to explicit artifact requests", () => {
+  const md = createSkillMarkdown();
+  const whenToUse = md.slice(md.indexOf("## When to use"), md.indexOf("## Workflow"));
+
+  assert.match(SKILL_DESCRIPTION, /explicitly invokes `\/lavish`/);
+  assert.match(SKILL_DESCRIPTION, /names Lavish/);
+  assert.match(SKILL_DESCRIPTION, /HTML, interactive, annotatable, or browser-based visual artifact/);
+  assert.doesNotMatch(
+    SKILL_DESCRIPTION,
+    /\b(?:plan|comparison|table|diagram|report|code diff|PR review|complex answer)\b/i,
+  );
+  assert.match(
+    whenToUse,
+    /A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself/,
+  );
+  assert.match(whenToUse, /answer in plain chat/);
+});
+
+test("createSkillMarkdown stops organic activation without an explicit artifact request", () => {
+  const md = createSkillMarkdown();
+  const request = md.slice(md.indexOf("## Request"), md.indexOf("## When to use"));
+
+  assert.match(request, /If this skill loaded organically/);
+  assert.match(request, /stop and answer in plain chat/);
 });
 
 test("createSkillMarkdown mirrors the no-args home output", () => {
   const md = createSkillMarkdown();
   const home = createHomeOutput({ bin: "lavish-axi", sessions: [], includeSessions: false });
+  const normalizedMd = md.replace(/\s+/g, " ");
 
-  assert.ok(md.includes(skillCommandText(home.description)), "includes the product description");
+  assert.ok(
+    normalizedMd.includes(skillCommandText(home.description).replace(/\s+/g, " ")),
+    "includes the product description",
+  );
 
   for (const item of home.visual_guidance) {
     assert.ok(md.includes(item), `includes visual guidance: ${item.slice(0, 32)}...`);
@@ -53,9 +84,22 @@ test("createSkillMarkdown mirrors the no-args home output", () => {
   }
 
   for (const item of home.help) {
-    const skillItem = skillCommandText(item);
-    assert.ok(md.includes(skillItem), `includes help: ${skillItem.slice(0, 32)}...`);
+    const skillItem = skillCommandText(item).replace(/\s+/g, " ");
+    assert.ok(normalizedMd.includes(skillItem), `includes help: ${skillItem.slice(0, 32)}...`);
   }
+});
+
+test("createSkillMarkdown starts artifacts from the closest native scaffold", () => {
+  const md = createSkillMarkdown();
+  const workflow = md.slice(md.indexOf("## Workflow"), md.indexOf("## Visual guidance"));
+
+  assert.match(
+    workflow,
+    /`bunx lavish-axi new --template <decision\|plan\|comparison\|report> \.lavish\/<name>\.html`/,
+  );
+  assert.match(workflow, /Choose the closest fixed template/);
+  assert.match(workflow, /edit only the generated content slots/i);
+  assert.match(workflow, /remove irrelevant sections/i);
 });
 
 test("createSkillMarkdown requires opening every matching playbook", () => {
@@ -78,12 +122,11 @@ test("createSkillMarkdown omits setup hooks guidance", () => {
   assert.doesNotMatch(md, /setup hooks/);
 });
 
-test("createSkillMarkdown uses non-interactive npx commands", () => {
+test("createSkillMarkdown standardizes every command on bunx", () => {
   const md = createSkillMarkdown();
 
-  assert.match(md, /`npx -y lavish-axi <html-file>`/);
-  assert.match(md, /If lavish-axi output shows a follow-up command starting with `lavish-axi`/);
-  assert.match(md, /run it as `npx -y lavish-axi/);
-  assert.doesNotMatch(md, /`npx lavish-axi/);
-  assert.doesNotMatch(md, /Run `lavish-axi/);
+  assert.match(md, /`bunx lavish-axi <html-file>`/);
+  assert.match(md, /Run every follow-up command with the `bunx lavish-axi \.\.\.` prefix/);
+  assert.doesNotMatch(md, /`npx(?: -y)? lavish-axi/);
+  assert.doesNotMatch(md, /`lavish-axi(?: |`)/);
 });
