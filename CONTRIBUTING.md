@@ -37,8 +37,6 @@ See the [no-mistakes quick start](https://github.com/ryxli/no-mistakes) for the 
 - Run `pnpm run check` before pushing.
 - Do not reformat repo-provided `.agents/` skill content; `.prettierignore` excludes it intentionally.
 - Do not hand-edit `CHANGELOG.md` or `.release-please-manifest.json`.
-- User-facing telemetry docs should stay minimal: anonymous usage telemetry, no sensitive content, and `LAVISH_AXI_TELEMETRY=0` opt-out.
+- User-facing telemetry docs should stay minimal: telemetry is disabled unless both a host and website ID are configured; `LAVISH_AXI_TELEMETRY=0` overrides enabled telemetry.
 
 ## Questions
-
-Open an issue, or talk to me on [Discord](https://discord.gg/Wsy2NpnZDu).

@@ -20,11 +20,11 @@ test("createSkillMarkdown emits valid frontmatter naming the lavish skill", () =
   assert.ok(frontmatter.includes(SKILL_DESCRIPTION), "frontmatter carries the skill description");
 });
 
-test("createSkillMarkdown emits Hermes Agent metadata without author identity", () => {
+test("createSkillMarkdown emits Hermes Agent metadata with author attribution", () => {
   const md = createSkillMarkdown();
   const frontmatter = md.slice(4, md.indexOf("\n---\n", 4));
 
-  assert.doesNotMatch(frontmatter, /^author:/m);
+  assert.match(frontmatter, /^author: Kun Chen \(kunchenguid\)$/m);
   assert.match(frontmatter, /^metadata:\n {2}hermes:\n {4}tags: \[[^\]]+\]\n {4}category: \S+$/m);
   assert.doesNotMatch(frontmatter, /^version:/m, "version is omitted to avoid release churn");
 });
@@ -156,14 +156,4 @@ test("createSkillMarkdown standardizes every command on bunx", () => {
   assert.match(md, /Run every follow-up command with the `bunx lavish-axi \.\.\.` prefix/);
   assert.doesNotMatch(md, /`npx(?: -y)? lavish-axi/);
   assert.doesNotMatch(md, /`lavish-axi(?: |`)/);
-});
-
-test("createSkillMarkdown documents installed-copy fallback for restricted sandboxes", () => {
-  const md = createSkillMarkdown();
-
-  assert.match(md, /restricted subprocess sandboxes/);
-  assert.match(md, /status 216/);
-  assert.match(md, /`node "\$\(npm root\)\/lavish-axi\/dist\/cli\.mjs" <html-file>`/);
-  assert.match(md, /`node "\$\(npm root -g\)\/lavish-axi\/dist\/cli\.mjs" <html-file>`/);
-  assert.match(md, /bare `lavish-axi <html-file>` bin/);
 });

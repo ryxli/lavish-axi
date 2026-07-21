@@ -9,9 +9,6 @@
   <a href="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
     ><img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
   /></a>
-  <a href="https://discord.gg/Wsy2NpnZDu"
-    ><img alt="Discord" src="https://img.shields.io/discord/1439901831038763092?style=flat-square&label=discord"
-  /></a>
 </p>
 
 <h3 align="center">For when a rich editor is not rich enough.</h3>
@@ -39,10 +36,10 @@ Lavish Editor is an [AXI](https://axi.md), which means -
 
 ## Quick Start
 
-Install the Lavish skill in the [Agent Skills](https://agentskills.io) format with [`bunx skills`](https://github.com/vercel-labs/skills):
+From the local checkout, install the Lavish skill in the [Agent Skills](https://agentskills.io) format with [`bunx skills`](https://github.com/vercel-labs/skills):
 
 ```sh
-bunx skills add ryxli/lavish-axi --skill lavish
+bunx skills add . --skill lavish
 ```
 
 Install the CLI from a local checkout as described below before invoking the skill.
@@ -62,8 +59,8 @@ It creates an artifact only for an explicit `/lavish`, a request that explicitly
 A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself.
 
 By default the skill lands in the current project's universal skills directory at `.agents/skills/lavish`.
-Run `bunx skills add ryxli/lavish-axi --skill lavish --global --yes` to install it for all projects at `~/.agents/skills/lavish`.
-Run `bunx skills update lavish --global --yes` to refresh that global installation after an update.
+From the local checkout, run `bunx skills add . --skill lavish --global --yes` to install it for all projects at `~/.agents/skills/lavish`.
+After updating the checkout, rerun the same local add command to refresh the global installation.
 
 ## Other Ways to Use Lavish
 
@@ -79,6 +76,7 @@ cd lavish-axi
 bun install --global .
 lavish-axi --version
 ```
+
 Use `bunx lavish-axi` to write a product or technical plan for what we discussed.
 
 ### Session hook
@@ -93,7 +91,6 @@ lavish-axi setup hooks
 This installs a `SessionStart` hook for **Claude Code**, **Codex**, **OpenCode**, and **GitHub Copilot CLI** that surfaces open sessions, visualization playbooks, and usage guidance at the start of each session.
 Unlike the skill, the hook also shows your live open sessions, so a fresh agent session can resume an in-flight review.
 **Restart your agent session after running this** so the new hook takes effect.
-
 
 ## How It Works
 
