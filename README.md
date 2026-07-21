@@ -45,18 +45,18 @@ Lavish Editor is an [AXI](https://axi.md), which means -
 
 ## Quick Start
 
-Install the Lavish skill in the [Agent Skills](https://agentskills.io) format with [`npx skills`](https://github.com/vercel-labs/skills):
+Install the Lavish skill in the [Agent Skills](https://agentskills.io) format with [`bunx skills`](https://github.com/vercel-labs/skills):
 
 ```sh
-npx skills add kunchenguid/lavish-axi --skill lavish
+bunx skills add kunchenguid/lavish-axi --skill lavish
 ```
 
-That is the entire setup - no npm install needed.
-The skill teaches your agent to run Lavish through `npx -y lavish-axi`, so the CLI comes along on demand.
-In restricted subprocess sandboxes, CI, or agent harnesses where `npx -y` exits opaquely, the skill also documents direct installed-copy fallbacks through the local or global npm install path.
+That is the entire setup - no package install needed.
+The skill teaches your agent to run Lavish through `bunx lavish-axi`, so the CLI comes along on demand.
+In restricted subprocess sandboxes, CI, or agent harnesses where `bunx lavish-axi` exits opaquely (for example with status 216), the skill also documents direct installed-copy fallbacks through the local or global npm install path.
 Its frontmatter also includes Hermes Agent metadata, so Hermes-compatible harnesses can categorize and surface it as a first-class productivity skill.
 This installs the public `lavish` skill.
-The repository also contains an internal `lavish-design` brand skill for maintainers; default `npx skills add ... --list` and skills.sh discovery hide it unless `INSTALL_INTERNAL_SKILLS=1` is set.
+The repository also contains an internal `lavish-design` brand skill for maintainers; default `bunx skills add ... --list` and skills.sh discovery hide it unless `INSTALL_INTERNAL_SKILLS=1` is set.
 
 Then, in agents that expose skills as slash commands (Claude Code, for example), invoke it directly:
 
@@ -64,9 +64,13 @@ Then, in agents that expose skills as slash commands (Claude Code, for example),
 /lavish let's discuss our plan here
 ```
 
-Or just ask for anything that is easier to grasp visually - a plan, comparison, diagram, table, code view, or report - and the agent loads the skill on its own when it recognizes the task.
+The skill defaults to plain chat.
+It creates an artifact only for an explicit `/lavish`, a request naming Lavish, or a request for an HTML, interactive, annotatable, or browser-based visual artifact.
+A plan, comparison, table, diagram, report, code diff, PR review, or generally complex answer is not a trigger by itself.
 
-By default the skill lands in the current project's skills directory (`.claude/skills/`, for example); add `-g` to install it for all projects (`~/.claude/skills/`).
+By default the skill lands in the current project's universal skills directory at `.agents/skills/lavish`.
+Run `bunx skills add kunchenguid/lavish-axi --skill lavish --global --yes` to install it for all projects at `~/.agents/skills/lavish`.
+Run `bunx skills update lavish --global --yes` to refresh that global installation after an update.
 
 ## Other Ways to Use Lavish
 
