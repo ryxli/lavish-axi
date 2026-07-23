@@ -39,7 +39,7 @@ test("createSkillMarkdown handles explicit /lavish invocation arguments", () => 
 
 test("createSkillMarkdown mirrors the no-args home output", () => {
   const md = createSkillMarkdown();
-  const home = createHomeOutput({ bin: "lavish-axi", sessions: [], includeSessions: false });
+  const home = createHomeOutput({ bin: "lavish-axi", sessions: [], includeSessions: false, agent: "static" });
 
   assert.ok(md.includes(skillCommandText(home.description)), "includes the product description");
 
@@ -56,6 +56,29 @@ test("createSkillMarkdown mirrors the no-args home output", () => {
     const skillItem = skillCommandText(item);
     assert.ok(md.includes(skillItem), `includes help: ${skillItem.slice(0, 32)}...`);
   }
+});
+
+test("createSkillMarkdown requires an observable wake path for every poll", () => {
+  const md = createSkillMarkdown();
+  const workflow = md.slice(md.indexOf("## Workflow"), md.indexOf("## Visual guidance"));
+
+  assert.match(workflow, /Keep .*poll in the foreground by default.*return the feedback directly to the agent/i);
+  assert.match(workflow, /harness-native tracked background-job facility/i);
+  assert.match(workflow, /completion result is guaranteed to resume or notify the same agent/i);
+  assert.match(workflow, /Never use `nohup`/);
+  assert.match(workflow, /shell `&`/);
+  assert.match(workflow, /`disown`/);
+  assert.match(workflow, /redirected fire-and-forget processes/);
+  assert.match(workflow, /detached terminal without an explicit verified callback/);
+  assert.match(
+    workflow,
+    /If the harness has no completion-aware background facility, use the foreground poll or first wire a verified wake callback into the surrounding supervisor/i,
+  );
+  assert.match(workflow, /Do not tell the user the artifact is being monitored until that wake path is live/i);
+  assert.match(workflow, /`Send & End` ends the session.*final feedback is still delivered once.*polling stops/i);
+  assert.match(workflow, /(?:do|must) not reopen (?:it|the session) uninvited/i);
+  assert.match(workflow, /queued feedback is never lost/);
+  assert.doesNotMatch(md, /Codex detected/);
 });
 
 test("createSkillMarkdown requires opening every matching playbook", () => {
@@ -86,4 +109,14 @@ test("createSkillMarkdown uses non-interactive npx commands", () => {
   assert.match(md, /run it as `npx -y lavish-axi/);
   assert.doesNotMatch(md, /`npx lavish-axi/);
   assert.doesNotMatch(md, /Run `lavish-axi/);
+});
+
+test("createSkillMarkdown documents installed-copy fallback for restricted sandboxes", () => {
+  const md = createSkillMarkdown();
+
+  assert.match(md, /restricted subprocess sandboxes/);
+  assert.match(md, /status 216/);
+  assert.match(md, /`node "\$\(npm root\)\/lavish-axi\/dist\/cli\.mjs" <html-file>`/);
+  assert.match(md, /`node "\$\(npm root -g\)\/lavish-axi\/dist\/cli\.mjs" <html-file>`/);
+  assert.match(md, /bare `lavish-axi <html-file>` bin/);
 });

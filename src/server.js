@@ -10,15 +10,16 @@ import chokidar from "chokidar";
 import express from "express";
 
 import {
-  classifyHorizontalOverflow,
-  classifyVerticalOverflow,
+  classifySevereTextOverflow,
+  classifyMaterialRectEscape,
   createArtifactSdk,
   deriveLavishQueueKey,
-  fragmentsSignificantlyOverlap,
+  findStableLayoutFindings,
+  isMaterialPageOverflow,
   isModeToggleHotkeyEvent,
   isNativeInteractiveControl,
+  isNearTotalOcclusion,
   MODE_TOGGLE_HOTKEY_KEY,
-  resolveVisibleSpillCandidates,
 } from "./artifact-sdk.js";
 import * as mermaidNode from "./mermaid-node.js";
 import { extractMermaidSources, mermaidSourceHash } from "./mermaid-source.js";
@@ -49,7 +50,7 @@ import {
 } from "./export-bundle.js";
 import { publishToHtmlApp } from "./html-app.js";
 import { injectLavishSdk } from "./html-transform.js";
-import { bindHost, hostForUrl, linkHost } from "./paths.js";
+import { bindHost, extraAllowedHosts, hostForUrl, IPV6_LOOPBACK_HOST, linkHost, LOOPBACK_HOST } from "./paths.js";
 import { canonicalFile, ensureEvolution, SessionStore, sessionKey } from "./session-store.js";
 
 const chromeClientUrl = new URL("./chrome-client.js", import.meta.url);
@@ -142,6 +143,7 @@ export async function serve({
   idleTimeoutMs = resolveIdleTimeoutMs(),
   host = bindHost(),
   linkHost: linkHostName = linkHost(),
+  allowedHosts = extraAllowedHosts(),
   whiteboardAssetsDir = defaultWhiteboardAssetsDir(),
 }) {
   const app = express();
@@ -160,6 +162,36 @@ export async function serve({
 
   // Whiteboard sidecar files live next to state.json, keyed by session + diagram.
   const whiteboardStateRoot = path.dirname(stateFile);
+
+  // DNS-rebinding guard. isSameOriginRequest (used on /share and the whiteboard
+  // write routes) stops classic cross-origin CSRF but NOT DNS rebinding: a page
+  // that rebinds its own domain to this loopback port sends that domain in both
+  // Origin and Host, so the two still match. The robust defense is a Host-header
+  // allowlist - a rebound browser carries the attacker's domain in Host, which is
+  // never one of the hostnames this server answers to.
+  //
+  // Loopback names are always accepted. Binding to a concrete interface
+  // (LAVISH_AXI_HOST) or naming a link host (LAVISH_AXI_LINK_HOST) adds that host,
+  // so an operator who intentionally exposes the server on a specific interface
+  // keeps rebinding protection while their chosen hostname works. Additional
+  // names (a reverse-proxy hostname, extra interfaces) are an explicit opt-in via
+  // LAVISH_AXI_ALLOWED_HOSTS; a lone "*" there disables the guard for operators
+  // who front the server with their own authentication. When a reverse proxy sits
+  // in front, X-Forwarded-Host is validated too (see isAllowedRequestHost).
+  const allowedHostnames = buildAllowedHostnames({ host, linkHost: linkHostName, allowedHosts });
+  if (!allowsAllHosts(allowedHosts)) {
+    app.use((req, res, next) => {
+      const requestHost = { host: req.headers.host, forwardedHost: req.headers["x-forwarded-host"] };
+      if (isAllowedRequestHost(requestHost, allowedHostnames)) {
+        next();
+        return;
+      }
+      logEvent?.(
+        `rejected request with disallowed host host=${req.headers.host ?? ""} x-forwarded-host=${req.headers["x-forwarded-host"] ?? ""} path=${req.path}`,
+      );
+      res.status(403).json({ error: "forbidden host" });
+    });
+  }
 
   const defaultJsonParser = express.json({ limit: "2mb" });
   const whiteboardJsonParser = express.json({ limit: "20mb" });
@@ -392,6 +424,11 @@ export async function serve({
         return;
       }
       events.emit("agent-reply", req.params.key, text);
+      // The reply concludes the delivered-feedback "working" state. Without this, a poll that
+      // drains feedback and then releases leaves presence stuck on "working" — the chrome keeps
+      // Send disabled — until some future poll happens to attach, even though the agent already
+      // answered. See "SSE agent-presence returns to waiting after an agent reply".
+      clearFeedbackDelivery(req.params.key, activePolls, workingSessions, events);
       res.json({ status: "sent" });
     } catch (error) {
       next(error);
@@ -863,6 +900,7 @@ export async function serve({
       const body = req.body || {};
       await saveWhiteboard(whiteboardStateRoot, req.params.key, Number(req.params.index), {
         sourceHash: String(body.source_hash || body.sourceHash || ""),
+        textMetricsVersion: Number(body.text_metrics_version || body.textMetricsVersion) || 0,
         scene: body.scene ?? null,
         baseline: body.baseline ?? null,
       });
@@ -1078,6 +1116,86 @@ function encodeRfc5987Value(value) {
     /['()*]/g,
     (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
   );
+}
+
+// Wildcard bind addresses ("all interfaces") are not connectable hostnames, so
+// they never belong in the Host allowlist - and "0.0.0.0" as a Host is a known
+// loopback-reach trick, so it must stay rejected.
+const WILDCARD_BIND_HOSTS = new Set(["0.0.0.0", "::"]);
+
+// The set of Host header hostnames this server answers to: loopback names plus
+// the resolved bind and link host and any explicit LAVISH_AXI_ALLOWED_HOSTS
+// extras, minus wildcard binds and the "*" sentinel. Lowercased for
+// case-insensitive comparison against the incoming Host.
+export function buildAllowedHostnames({ host, linkHost: linkHostName, allowedHosts = [] }) {
+  return new Set(
+    [LOOPBACK_HOST, IPV6_LOOPBACK_HOST, "localhost", host, linkHostName, ...allowedHosts]
+      .map((value) =>
+        String(value || "")
+          .trim()
+          .toLowerCase(),
+      )
+      .filter((value) => value && value !== "*" && !WILDCARD_BIND_HOSTS.has(value)),
+  );
+}
+
+// A lone "*" in LAVISH_AXI_ALLOWED_HOSTS is an explicit opt-out of the Host
+// allowlist, for operators who front the server with their own auth/proxy.
+export function allowsAllHosts(allowedHosts = []) {
+  return allowedHosts.some((value) => String(value).trim() === "*");
+}
+
+// Extract the hostname (without port) from a Host header value, honoring
+// bracketed IPv6 literals ("[::1]:4387"). Returns null for a malformed authority.
+export function hostnameFromHostHeader(value) {
+  const raw = String(value).trim();
+  if (raw.startsWith("[")) {
+    const end = raw.indexOf("]");
+    if (end === -1) return null;
+    // Anything after the closing bracket must be a `:port` suffix; reject trailing
+    // garbage (e.g. "[::1]evil.com") instead of reading it as the bracketed host.
+    const rest = raw.slice(end + 1);
+    if (rest.length > 0 && !rest.startsWith(":")) return null;
+    return raw.slice(1, end).toLowerCase();
+  }
+  const colon = raw.indexOf(":");
+  const hostname = colon === -1 ? raw : raw.slice(0, colon);
+  // A bare, unbracketed IPv6 literal is not a valid authority; reject it rather
+  // than mistaking a hextet for a port.
+  if (hostname.includes(":")) return null;
+  return hostname.toLowerCase();
+}
+
+// DNS-rebinding defense: a loopback-bound server answers only to its own known
+// hostnames. A rebound browser carries the attacker's domain in Host and is
+// rejected. Host is mandatory in HTTP/1.1 and every browser sends it, so a
+// missing or blank value is never a legitimate client - reject it rather than
+// fail open.
+export function isAllowedHostHeader(hostHeader, allowedHostnames) {
+  if (hostHeader === undefined || hostHeader === null) return false;
+  const raw = String(hostHeader).trim();
+  if (raw === "") return false;
+  const hostname = hostnameFromHostHeader(raw);
+  if (hostname === null) return false;
+  return allowedHostnames.has(hostname);
+}
+
+// Validate a request's effective host for DNS-rebinding protection. The Host
+// header is required and must be allowlisted. When an X-Forwarded-Host is present
+// - a reverse proxy in front of the loopback server - its outermost (last) value
+// must ALSO be allowlisted, so a proxy works once its public hostname is added to
+// LAVISH_AXI_ALLOWED_HOSTS. This is an AND check: a client-spoofed forwarded host
+// can only narrow access (Host is still checked), never widen it into a bypass. A
+// blank forwarded host is treated as absent, matching how proxies omit it.
+/**
+ * @param {{ host?: string|undefined|null, forwardedHost?: string|undefined|null }} headers
+ * @param {Set<string>} allowedHostnames
+ */
+export function isAllowedRequestHost({ host, forwardedHost }, allowedHostnames) {
+  if (!isAllowedHostHeader(host, allowedHostnames)) return false;
+  const forwarded = forwardedHost === undefined || forwardedHost === null ? "" : String(forwardedHost).trim();
+  if (forwarded === "") return true;
+  return isAllowedHostHeader(forwarded.split(",").pop(), allowedHostnames);
 }
 
 // Guard state-changing, outward-facing routes (publishing to a third-party host) against CSRF: a
@@ -1438,7 +1556,7 @@ ${faviconTag}
 <div class="bar"><button class="bar-icon-button" id="sessionsToggle" type="button" title="Sessions" aria-expanded="false" aria-pressed="false" aria-controls="sessionsSidebar">${chromeIcons.sessions}</button><div class="brand"><div class="session-identity"><strong class="session-title">${escapeHtml(headerTitle)}</strong><span class="session-file">${escapeHtml(headerFile)}</span></div></div><div class="header-review-controls"><div class="evolution-strip" id="evolutionStrip" aria-live="polite"><span class="evolution-rev" id="evolutionRev"></span><span class="evolution-ideal" id="evolutionIdeal" hidden></span><button class="evolution-set-ideal" id="evolutionSetIdeal" type="button">Set ideal</button><button class="evolution-history" id="evolutionHistory" type="button" aria-expanded="false">History</button><span class="evolution-unseen" id="evolutionUnseen" hidden></span></div></div><div class="spacer" aria-hidden="true"></div><button class="annotate-switch" id="annotation" type="button" aria-pressed="true" title="${escapeHtml(modeToggleHint)}"><span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span><span>Annotate</span></button><div class="more-wrap" id="moreWrap"><button class="more-button" id="moreButton" type="button" title="More" aria-haspopup="menu" aria-expanded="false">${chromeIcons.more}</button><div class="menu more-menu" id="moreMenu" hidden><div class="menu-head"><div class="menu-label">Editing</div><button class="menu-file" id="copyPath" type="button" title="Copy path · ${escapeHtml(session.file)}">${chromeIcons.file}<span class="menu-file-text"><span class="path-head">${escapeHtml(pathHead)}</span><span class="path-tail">${escapeHtml(pathTail)}</span></span><span class="copy-hint" id="copyHint"><span class="icon-copy">${chromeIcons.copy}</span><span class="icon-check">${chromeIcons.check}</span><span id="copyHintText">Copy</span></span></button></div><div class="menu-rule"></div><button class="menu-item" id="reloadArtifact" type="button">${chromeIcons.refresh}<span>Reload artifact</span></button><button class="menu-item" id="copySnapshot" type="button">${chromeIcons.camera}<span>Copy DOM snapshot</span></button><button class="menu-item" id="exportArtifact" type="button">${chromeIcons.download}<span>Export standalone HTML</span></button><button class="menu-item" id="shareArtifact" type="button">${chromeIcons.globe}<span>Publish link</span></button><div class="menu-rule"></div><button class="menu-item danger" id="end" type="button">${chromeIcons.exit}<span>End session</span></button></div></div></div>
 <aside class="sessions-sidebar" id="sessionsSidebar" hidden aria-label="Sessions"><div class="overlay-head"><strong>Sessions</strong><button class="overlay-close" id="sessionsClose" type="button" aria-label="Close sessions">×</button></div><div class="sessions-list" id="sessionsList"></div></aside>
 <aside class="evo-timeline" id="evoTimeline" hidden aria-label="Evolution history"><div class="overlay-head"><strong>Evolution</strong><button class="overlay-close" id="evoTimelineClose" type="button" aria-label="Close history">×</button></div><div class="evo-timeline-list" id="evoTimelineList"></div></aside>
-<div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-downloads" data-artifact-src="/artifact/${session.key}/index.html"></iframe><div class="layout-issue-banner" id="layoutIssueBanner" hidden>This surface may have layout issues. Your agent has been notified.</div></div><aside class="panel"><h2>Conversation</h2><div class="panel-scroll" id="panelScroll"><div class="chat" id="chatLog"></div><div class="annotation-pills" id="annotationPills"></div></div><div class="composer"><div class="presence-banner" id="presenceBanner" hidden>Your agent is not listening. If this persists, ask your agent to poll for updates from Lavish.</div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="send-hint" id="sendHint" hidden>Write a message or annotate an element first.</div><div class="actions" id="sendActions"><button class="button button-danger" id="sendAndEnd" type="button">${chromeIcons.exit}<span>Send &amp; End</span></button><button class="button" id="send">Send to Agent</button></div></div></aside></div>
+<div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-downloads" data-artifact-src="/artifact/${session.key}/index.html"></iframe><div class="layout-issue-banner" id="layoutIssueBanner" hidden>This surface has a severe layout failure. Your agent has been notified.</div></div><aside class="panel"><h2>Conversation</h2><div class="panel-scroll" id="panelScroll"><div class="chat" id="chatLog"></div><div class="annotation-pills" id="annotationPills"></div></div><div class="composer"><div class="presence-banner" id="presenceBanner" hidden>Your agent is not listening. If this persists, ask your agent to poll for updates from Lavish.</div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="send-hint" id="sendHint" hidden>Write a message or annotate an element first.</div><div class="actions" id="sendActions"><button class="button button-danger" id="sendAndEnd" type="button">${chromeIcons.exit}<span>Send &amp; End</span></button><button class="button" id="send">Send to Agent</button></div></div></aside></div>
 <section class="layout-issue-banner delivery-failure" id="deliveryFailure" hidden><p id="deliveryFailureText">Feedback not yet delivered. Retry delivery.</p><div class="delivery-failure-actions"><button class="button delivery-dismiss" id="dismissDelivery" type="button">Dismiss</button><button class="button" id="retryDelivery" type="button">Retry delivery</button></div></section>
 <div class="share-overlay" id="shareDialog" role="dialog" aria-modal="true" aria-labelledby="shareTitleText" hidden><form class="share-card" id="shareForm"><div class="share-head"><div><div class="share-kicker">Publish to <a class="share-link" href="https://ht-ml.app" target="_blank" rel="noopener noreferrer">ht-ml.app</a></div><h2 id="shareTitleText">Publish artifact</h2></div><button class="share-close" id="shareClose" type="button" aria-label="Close publish dialog"><svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><p class="share-note">ht-ml.app is a separate, third-party hosting service, not part of Lavish. Publishing sends this artifact to its servers.</p><p class="share-copy">This uploads this artifact to ht-ml.app with local assets inlined. Without a password, the page is PUBLIC and anyone with the link can open it. With a password, the page is PRIVATE and viewers must supply the password to view.</p><p class="share-note">Do not publish secrets. The Lavish annotation SDK is not included.</p><div class="share-grid"><label>Password (optional)<input id="sharePassword" name="password" type="password" autocomplete="new-password" placeholder="Leave blank for a public page"></label></div><div class="share-status" id="shareStatus" role="status"></div><div class="share-result" id="shareResult" hidden><label>Share URL<div class="share-copy-row"><input id="shareUrl" readonly><button class="share-copy-btn" id="copyShareUrl" type="button">Copy URL</button></div></label><label>Update key (secret)<div class="share-copy-row"><input id="shareUpdateKey" readonly><button class="share-copy-btn" id="copyUpdateKey" type="button">Copy key</button></div></label><p class="share-note">Keep the update key private. ht-ml.app returns it once and it is the only way to update or delete this page later.</p></div><div class="share-actions"><button class="share-cancel" id="shareCancel" type="button">Cancel</button><button class="button" id="sharePublish" type="submit">Publish</button></div></form></div>
 <div class="ended-overlay layout-gate-overlay" id="layoutGateOverlay"${layoutGateHidden}><div class="ended-card"><div class="ended-title" id="layoutGateTitle">Checking layout.<br>One moment.</div><p class="ended-copy" id="layoutGateCopy">Lavish is waiting for fonts and final geometry before revealing this artifact.</p><button class="button ended-action" id="layoutGateAction" type="button">Show anyway</button></div></div>
@@ -1483,10 +1601,11 @@ const deriveQueueKey=${deriveLavishQueueKey.toString()};
 const isNativeInteractiveControl=${isNativeInteractiveControl.toString()};
 const MODE_TOGGLE_HOTKEY_KEY=${JSON.stringify(MODE_TOGGLE_HOTKEY_KEY)};
 const isModeToggleHotkeyEvent=${isModeToggleHotkeyEvent.toString()};
-const fragmentsSignificantlyOverlap=${fragmentsSignificantlyOverlap.toString()};
-const resolveVisibleSpillCandidates=${resolveVisibleSpillCandidates.toString()};
-const classifyHorizontalOverflow=${classifyHorizontalOverflow.toString()};
-const classifyVerticalOverflow=${classifyVerticalOverflow.toString()};
+const classifySevereTextOverflow=${classifySevereTextOverflow.toString()};
+const classifyMaterialRectEscape=${classifyMaterialRectEscape.toString()};
+const isMaterialPageOverflow=${isMaterialPageOverflow.toString()};
+const findStableLayoutFindings=${findStableLayoutFindings.toString()};
+const isNearTotalOcclusion=${isNearTotalOcclusion.toString()};
 ${mermaidHelperDecls}
 const mermaidHelpers={ ${mermaidHelperKeys} };
 (${createArtifactSdk.toString()})(deriveQueueKey, isNativeInteractiveControl, mermaidHelpers, whiteboardEditingEnabled);
