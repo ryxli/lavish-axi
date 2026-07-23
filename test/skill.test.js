@@ -4,10 +4,6 @@ import test from "node:test";
 import { createHomeOutput } from "../src/cli.js";
 import { SKILL_DESCRIPTION, createSkillMarkdown } from "../src/skill.js";
 
-function skillCommandText(text) {
-  return text.replaceAll("`lavish-axi", "`bunx lavish-axi");
-}
-
 test("createSkillMarkdown emits valid frontmatter naming the lavish skill", () => {
   const md = createSkillMarkdown();
   assert.ok(md.startsWith("---\n"), "starts with frontmatter fence");
@@ -73,10 +69,7 @@ test("createSkillMarkdown mirrors the no-args home output", () => {
   const home = createHomeOutput({ bin: "lavish-axi", sessions: [], includeSessions: false, agent: "static" });
   const normalizedMd = md.replace(/\s+/g, " ");
 
-  assert.ok(
-    normalizedMd.includes(skillCommandText(home.description).replace(/\s+/g, " ")),
-    "includes the product description",
-  );
+  assert.ok(normalizedMd.includes(home.description.replace(/\s+/g, " ")), "includes the product description");
 
   for (const item of home.visual_guidance) {
     assert.ok(md.includes(item), `includes visual guidance: ${item.slice(0, 32)}...`);
@@ -88,7 +81,7 @@ test("createSkillMarkdown mirrors the no-args home output", () => {
   }
 
   for (const item of home.help) {
-    const skillItem = skillCommandText(item).replace(/\s+/g, " ");
+    const skillItem = item.replace(/\s+/g, " ");
     assert.ok(normalizedMd.includes(skillItem), `includes help: ${skillItem.slice(0, 32)}...`);
   }
 });
@@ -120,10 +113,7 @@ test("createSkillMarkdown starts artifacts from the closest native scaffold", ()
   const md = createSkillMarkdown();
   const workflow = md.slice(md.indexOf("## Workflow"), md.indexOf("## Visual guidance"));
 
-  assert.match(
-    workflow,
-    /`bunx lavish-axi new --template <decision\|plan\|comparison\|report> \.lavish\/<name>\.html`/,
-  );
+  assert.match(workflow, /`lavish-axi new --template <decision\|plan\|comparison\|report> \.lavish\/<name>\.html`/);
   assert.match(workflow, /Choose the closest fixed template/);
   assert.match(workflow, /edit only the generated content slots/i);
   assert.match(workflow, /remove irrelevant sections/i);
@@ -149,11 +139,17 @@ test("createSkillMarkdown omits setup hooks guidance", () => {
   assert.doesNotMatch(md, /setup hooks/);
 });
 
-test("createSkillMarkdown standardizes every command on bunx", () => {
+test("createSkillMarkdown requires install, build, and link before checkout invocation", () => {
   const md = createSkillMarkdown();
+  const installIndex = md.indexOf("`bun install`");
+  const buildIndex = md.indexOf("`bun run build`");
+  const linkIndex = md.indexOf("`bun link`");
+  const invocationIndex = md.indexOf("Invoke the checkout-owned executable with `lavish-axi <html-file>`");
 
-  assert.match(md, /`bunx lavish-axi <html-file>`/);
-  assert.match(md, /Run every follow-up command with the `bunx lavish-axi \.\.\.` prefix/);
-  assert.doesNotMatch(md, /`npx(?: -y)? lavish-axi/);
-  assert.doesNotMatch(md, /`lavish-axi(?: |`)/);
+  assert.ok(installIndex >= 0, "installs dependencies");
+  assert.ok(buildIndex > installIndex, "builds after installing dependencies");
+  assert.ok(linkIndex > buildIndex, "links after building the checkout CLI");
+  assert.ok(invocationIndex > linkIndex, "invokes only after linking");
+  assert.match(md, /Run every follow-up command with the `lavish-axi \.\.\.` prefix/);
+  assert.doesNotMatch(md, /`(?:bunx|npx(?: -y)?) lavish-axi/);
 });

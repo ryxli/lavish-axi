@@ -3,9 +3,6 @@
   <a href="https://github.com/ryxli/lavish-axi/actions/workflows/ci.yml"
     ><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ryxli/lavish-axi/ci.yml?style=flat-square&label=ci"
   /></a>
-  <a href="https://github.com/ryxli/lavish-axi/actions/workflows/release-please.yml"
-    ><img alt="Release" src="https://img.shields.io/github/actions/workflow/status/ryxli/lavish-axi/release-please.yml?style=flat-square&label=release"
-  /></a>
   <a href="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
     ><img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
   /></a>
@@ -43,7 +40,7 @@ bunx skills add . --skill lavish
 ```
 
 Install the CLI from a local checkout as described below before invoking the skill.
-The skill teaches your agent to run Lavish through `bunx lavish-axi`.
+The skill teaches your agent to run the Bun-linked checkout-owned `lavish-axi` executable.
 Its frontmatter also includes Hermes Agent metadata, so Hermes-compatible harnesses can categorize and surface it as a first-class productivity skill.
 This installs the public `lavish` skill.
 The repository also contains an internal `lavish-design` brand skill for maintainers; default `bunx skills add ... --list` and skills.sh discovery hide it unless `INSTALL_INTERNAL_SKILLS=1` is set.
@@ -68,16 +65,18 @@ The skill is the recommended path, but it is not the only one.
 
 ### Local checkout
 
-Clone and install the CLI globally from the standalone repository:
+Clone, install, build, and link the CLI globally from the standalone repository:
 
 ```sh
 git clone https://github.com/ryxli/lavish-axi.git
 cd lavish-axi
-bun install --global .
+bun install
+bun run build
+bun link
 lavish-axi --version
 ```
 
-Use `bunx lavish-axi` to write a product or technical plan for what we discussed.
+Use `lavish-axi` to write a product or technical plan for what we discussed.
 
 ### Session hook
 
@@ -176,7 +175,6 @@ Unlike the skill, the hook also shows your live open sessions, so a fresh agent 
 | Command                         | Description                                                                                                                                                                                                                                                                                    |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lavish-axi`                    | Show current sessions and usage guidance.                                                                                                                                                                                                                                                      |
-| `lavish-axi update`             | Check for or apply the latest npm release through the AXI SDK self-updater.                                                                                                                                                                                                                    |
 | `lavish-axi <html-file>`        | Open or resume a Lavish Editor session, with the open-time layout gate enabled by default. Refuses to reopen a session the user explicitly ended from the browser unless `--reopen` is passed.                                                                                                 |
 | `lavish-axi poll <html-file>`   | Long-poll until the user sends feedback, ends the session, or the browser proves a severe layout failure; leave no-timeout polls running, or re-run them if interrupted. Codex guidance keeps polls attached to the active turn. On `status: ended`, stop polling and do not reopen uninvited. |
 | `lavish-axi end <html-file>`    | End a session as the agent; unlike a user-initiated end from the browser, this still allows a plain reopen later.                                                                                                                                                                              |
@@ -199,7 +197,6 @@ For flows, architecture, state, or sequence diagrams, open the diagram playbook 
 | `lavish-axi <html-file>` | `--no-open`           | Ensure the server/session exists without opening another browser window.                                                                                                                                                            |
 | `lavish-axi <html-file>` | `--no-gate`           | Skip the open-time layout curtain for this browser open.                                                                                                                                                                            |
 | `lavish-axi <html-file>` | `--reopen`            | Reopen a session the user explicitly ended from the browser; without it, a plain open refuses and explains why instead of reopening uninvited.                                                                                      |
-| `lavish-axi update`      | `--check`             | Report current vs latest npm version without installing an update.                                                                                                                                                                  |
 | `lavish-axi export`      | `--out <path>`        | Write the export to a specific path instead of `<name>.export.html` next to the source.                                                                                                                                             |
 | `lavish-axi share`       | `--password <pw>`     | Make the third-party ht-ml.app page private; viewers must supply the password.                                                                                                                                                      |
 | `lavish-axi share`       | `--token <t>`         | Attach an optional bearer token (`LAVISH_AXI_HTML_APP_TOKEN`); never required to publish.                                                                                                                                           |
@@ -211,11 +208,11 @@ For flows, architecture, state, or sequence diagrams, open the diagram playbook 
 ## Development
 
 ```sh
-pnpm run check          # Run all verification commands
-pnpm run build          # Bundle the publishable CLI, chrome, and design assets
-pnpm run build:skill    # Regenerate the installable lavish skill
-pnpm test               # Run node:test tests
-pnpm run lint           # Run ESLint
-pnpm run format:check   # Check Prettier formatting
-pnpm run typecheck      # Run TypeScript checkJs validation
+bun run check           # Run all verification commands
+bun run build           # Bundle the CLI, chrome, and design assets
+bun run build:skill     # Regenerate the installable lavish skill
+bun run test            # Run the test suite
+bun run lint            # Run ESLint
+bun run format:check    # Check Prettier formatting
+bun run typecheck       # Run TypeScript checkJs validation
 ```
