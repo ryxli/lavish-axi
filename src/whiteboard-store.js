@@ -195,6 +195,7 @@ function normalizeStoredRecord(parsed) {
     : [];
   return {
     source_hash: String(parsed.source_hash || ""),
+    text_metrics_version: Math.max(0, Math.floor(Number(parsed.text_metrics_version) || 0)),
     updated_at: String(parsed.updated_at || ""),
     scene: parsed.scene ?? null,
     baseline: parsed.baseline ?? null,
@@ -272,9 +273,15 @@ export function whiteboardFeedbackPaths(stateDir, key, index) {
 
 // Working state: the editable scene, the conversion baseline used for edit
 // summaries, and the hash of the Mermaid source the scene was converted from.
-export async function saveWhiteboard(stateDir, key, index, { sourceHash, scene, baseline = null }) {
+export async function saveWhiteboard(
+  stateDir,
+  key,
+  index,
+  { sourceHash, textMetricsVersion = 0, scene, baseline = null },
+) {
   assertValidRef(key, index);
   const sourceHashSnapshot = String(sourceHash || "");
+  const textMetricsVersionSnapshot = Math.max(0, Math.floor(Number(textMetricsVersion) || 0));
   const sceneSnapshot = cloneJsonValue(sanitizeWhiteboardScene(scene));
   const baselineSnapshot = cloneJsonValue(baseline);
   return queueWhiteboardWrite(stateDir, key, index, async () => {
@@ -284,6 +291,7 @@ export async function saveWhiteboard(stateDir, key, index, { sourceHash, scene, 
     const entry = { revision, updated_at: updatedAt, kind: "full", operations: [] };
     const record = {
       source_hash: sourceHashSnapshot,
+      text_metrics_version: textMetricsVersionSnapshot,
       updated_at: updatedAt,
       scene: sceneSnapshot,
       baseline: baselineSnapshot,
@@ -302,6 +310,7 @@ export async function loadWhiteboard(stateDir, key, index) {
   if (!record) return null;
   return {
     source_hash: record.source_hash,
+    text_metrics_version: record.text_metrics_version,
     updated_at: record.updated_at,
     scene: record.scene,
     baseline: record.baseline,

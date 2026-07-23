@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,12 +10,17 @@ process.env.LAVISH_AXI_HOST = "127.0.0.1";
 process.env.LAVISH_AXI_LINK_HOST = "127.0.0.1";
 
 import {
+  allowsAllHosts,
+  buildAllowedHostnames,
   createChromeHtml,
   createSdkJs,
   displayPathParts,
   exportContentDisposition,
   extractArtifactHead,
   hasLiveReloadRootOptIn,
+  hostnameFromHostHeader,
+  isAllowedHostHeader,
+  isAllowedRequestHost,
   resolveArtifactAsset,
   resolveDesignAssetPath,
   resolveIdleTimeoutMs,
@@ -796,37 +801,54 @@ test("hot reload resets iframe src instead of crossing sandbox location", async 
   assert.match(js, /frame\.src\s*=\s*artifactSrc \|\| frame\.src/);
 });
 
-test("artifact SDK audits layout after fonts and ResizeObserver settle", () => {
+test("artifact SDK reports only stable severe layout failures after fonts, resize, and animations settle", () => {
   const js = createSdkJs("abc");
 
   assert.match(js, /document\.fonts\?\.ready/);
   assert.match(js, /new ResizeObserver\(scheduleFinish\)/);
+  assert.match(js, /document\.getAnimations/);
+  assert.match(js, /activeAnimationTargets/);
+  assert.match(js, /isAnimationAssociatedWithElement/);
+  assert.match(js, /findStableLayoutFindings/);
   assert.match(js, /type:\s*["']lavish:layoutWarnings["']/);
-  assert.match(js, /layout_warnings/);
   assert.match(js, /page-horizontal-overflow/);
-  assert.match(js, /element-scroll-overflow/);
-  assert.match(js, /element-parent-overflow/);
   assert.match(js, /clipped-text/);
   assert.match(js, /overlapping-text/);
+  assert.doesNotMatch(js, /element-scroll-overflow/);
+  assert.doesNotMatch(js, /element-parent-overflow/);
 });
 
-test("artifact SDK dedups cascading visible-overflow spills to the innermost element", () => {
+test("artifact SDK verifies severe clipping from direct rendered text fragments", () => {
   const js = createSdkJs("abc");
 
-  assert.match(js, /function resolveSpillCandidates/);
-  assert.match(js, /function resolveVisibleSpillCandidates/);
-  assert.match(js, /spillBottom/);
-  assert.match(js, /candidate\.el\.contains\(other\.el\)/);
+  assert.match(js, /function textFragmentsForAudit/);
+  assert.match(js, /document\.createRange\(\)/);
+  assert.match(js, /range\.getClientRects\(\)/);
+  assert.match(js, /classifySevereTextOverflow/);
+  assert.match(js, /isSemanticTextBoundary/);
+  assert.match(js, /isStandardVisuallyHidden/);
+  assert.match(js, /isIntentionalTextTruncation/);
+  assert.match(js, /clippingBoundariesFor/);
+  assert.match(js, /auditRequiredControlBounds/);
+  assert.match(js, /viewport-unreachable-control/);
+  assert.match(js, /auditUnreachableLeftText/);
+  assert.match(js, /viewport-unreachable-content/);
+  assert.match(js, /hasStandardVisuallyHiddenAncestor/);
+  assert.match(js, /rootVerticalScrollLocked/);
+  assert.match(js, /hasReachableVerticalScrollerAncestor/);
 });
 
-test("artifact SDK uses per-fragment rects, not the bounding box, for overlap detection", () => {
+test("artifact SDK reports only near-total occlusion by an opaque sibling", () => {
   const js = createSdkJs("abc");
 
-  assert.match(js, /function elementLineFragments/);
-  assert.match(js, /el\.getClientRects\(\)/);
-  assert.match(js, /fragmentsSignificantlyOverlap/);
-  assert.match(js, /function rectAreaOf\(rect\)/);
-  assert.match(js, /function intersectionAreaOf\(a, b\)/);
+  assert.match(js, /function opaqueSiblingBlocker/);
+  assert.match(js, /backgroundIsOpaque/);
+  assert.match(js, /filter\(\(el\) => !isExcludedLayoutAuditElement\(el\)\)/);
+  assert.match(js, /hasStandardVisuallyHiddenAncestor/);
+  assert.match(js, /hasVisualMaskAncestor/);
+  assert.match(js, /isDiagramLayoutElement/);
+  assert.match(js, /isNearTotalOcclusion/);
+  assert.match(js, /minRatio = 0\.9/);
 });
 
 test("artifact SDK reports its scroll position and restores it on request", () => {
@@ -1191,6 +1213,210 @@ test("artifact watch captures only changed content hashes as revisions", async (
   }
 });
 
+// Issue a raw HTTP request so tests can forge the Host header.
+/**
+ * @param {number} port
+ * @param {string} pathname
+ * @param {{ method?: string, host?: string, headers?: Record<string, string>, body?: string }} [options]
+ */
+function rawRequest(port, pathname, { method = "GET", host, headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const finalHeaders = { ...headers };
+    if (host !== undefined) finalHeaders.host = host;
+    if (body !== undefined && finalHeaders["content-type"] === undefined) {
+      finalHeaders["content-type"] = "application/json";
+    }
+    const req = httpRequest({ host: "127.0.0.1", port, path: pathname, method, headers: finalHeaders }, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => resolve({ status: res.statusCode, body: data, headers: res.headers }));
+    });
+    req.on("error", reject);
+    if (body !== undefined) req.write(body);
+    req.end();
+  });
+}
+
+test("loopback server honors the configured link host but still rejects others", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const server = await serve({
+    port: 0,
+    stateFile: path.join(dir, "state.json"),
+    version: "9.9.9-test",
+    host: "127.0.0.1",
+    linkHost: "host.example",
+  });
+  try {
+    const linkHostReq = await rawRequest(server.port, "/health", { host: `host.example:${server.port}` });
+    assert.equal(linkHostReq.status, 200);
+    const localhostReq = await rawRequest(server.port, "/health", { host: `localhost:${server.port}` });
+    assert.equal(localhostReq.status, 200);
+    const loopbackReq = await rawRequest(server.port, "/health", { host: `127.0.0.1:${server.port}` });
+    assert.equal(loopbackReq.status, 200);
+    const forged = await rawRequest(server.port, "/health", { host: `evil.example:${server.port}` });
+    assert.equal(forged.status, 403);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("server allows explicitly configured extra hosts and still rejects others", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const server = await serve({
+    port: 0,
+    stateFile: path.join(dir, "state.json"),
+    version: "9.9.9-test",
+    host: "127.0.0.1",
+    linkHost: "127.0.0.1",
+    allowedHosts: ["proxy.example"],
+  });
+  try {
+    const proxy = await rawRequest(server.port, "/health", { host: `proxy.example:${server.port}` });
+    assert.equal(proxy.status, 200);
+    const loopback = await rawRequest(server.port, "/health", { host: `127.0.0.1:${server.port}` });
+    assert.equal(loopback.status, 200);
+    const forged = await rawRequest(server.port, "/health", { host: `evil.example:${server.port}` });
+    assert.equal(forged.status, 403);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("server validates X-Forwarded-Host so it works behind a reverse proxy", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const server = await serve({
+    port: 0,
+    stateFile: path.join(dir, "state.json"),
+    version: "9.9.9-test",
+    host: "127.0.0.1",
+    linkHost: "127.0.0.1",
+    allowedHosts: ["proxy.example"],
+  });
+  try {
+    // A proxy rewrites Host to the loopback upstream and forwards the public host.
+    const proxied = await rawRequest(server.port, "/health", {
+      host: `127.0.0.1:${server.port}`,
+      headers: { "x-forwarded-host": "proxy.example" },
+    });
+    assert.equal(proxied.status, 200);
+    // A forwarded host that is not allowlisted is rejected even with a loopback Host.
+    const forgedForward = await rawRequest(server.port, "/health", {
+      host: `127.0.0.1:${server.port}`,
+      headers: { "x-forwarded-host": "evil.example" },
+    });
+    assert.equal(forgedForward.status, 403);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a '*' entry in allowedHosts disables the Host guard entirely", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const server = await serve({
+    port: 0,
+    stateFile: path.join(dir, "state.json"),
+    version: "9.9.9-test",
+    host: "127.0.0.1",
+    linkHost: "127.0.0.1",
+    allowedHosts: ["*"],
+  });
+  try {
+    const forged = await rawRequest(server.port, "/health", { host: `evil.example:${server.port}` });
+    assert.equal(forged.status, 200);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("isAllowedHostHeader enforces the loopback Host allowlist", () => {
+  const allowed = new Set(["127.0.0.1", "::1", "localhost", "host.example"]);
+  assert.equal(isAllowedHostHeader("127.0.0.1:4387", allowed), true);
+  assert.equal(isAllowedHostHeader("localhost", allowed), true);
+  assert.equal(isAllowedHostHeader("[::1]:4387", allowed), true);
+  assert.equal(isAllowedHostHeader("HOST.EXAMPLE:4387", allowed), true);
+  assert.equal(isAllowedHostHeader("evil.example:4387", allowed), false);
+  assert.equal(isAllowedHostHeader("evil.example", allowed), false);
+  // Host is mandatory in HTTP/1.1 and every browser sends it, so missing or blank
+  // is never legitimate and is rejected.
+  assert.equal(isAllowedHostHeader(undefined, allowed), false);
+  assert.equal(isAllowedHostHeader("", allowed), false);
+  assert.equal(isAllowedHostHeader("   ", allowed), false);
+});
+
+test("hostnameFromHostHeader rejects trailing garbage after a bracketed IPv6 literal", () => {
+  // Only an empty string or a `:port` suffix may follow the closing bracket;
+  // anything else is a malformed authority and must not resolve to the IPv6 host.
+  assert.equal(hostnameFromHostHeader("[::1]evil.com"), null);
+  assert.equal(hostnameFromHostHeader("[::1]:4387"), "::1");
+  assert.equal(hostnameFromHostHeader("[::1]"), "::1");
+});
+
+test("isAllowedHostHeader rejects a bracketed IPv6 host with trailing garbage", () => {
+  const allowed = new Set(["127.0.0.1", "::1", "localhost"]);
+  assert.equal(isAllowedHostHeader("[::1]evil.com", allowed), false);
+  assert.equal(isAllowedHostHeader("[::1]:4387", allowed), true);
+});
+
+test("isAllowedRequestHost requires an allowlisted Host and validates X-Forwarded-Host", () => {
+  const allowed = new Set(["127.0.0.1", "proxy.example"]);
+  assert.equal(isAllowedRequestHost({ host: "127.0.0.1:4387" }, allowed), true);
+  // Missing Host is blocked (HTTP/1.1 requires it).
+  assert.equal(isAllowedRequestHost({ host: undefined }, allowed), false);
+  assert.equal(isAllowedRequestHost({ host: "evil.example" }, allowed), false);
+  // A reverse proxy's forwarded host must also be allowlisted.
+  assert.equal(isAllowedRequestHost({ host: "127.0.0.1", forwardedHost: "proxy.example" }, allowed), true);
+  assert.equal(isAllowedRequestHost({ host: "127.0.0.1", forwardedHost: "evil.example" }, allowed), false);
+  // A spoofed forwarded host cannot widen access past the Host check.
+  assert.equal(isAllowedRequestHost({ host: "evil.example", forwardedHost: "127.0.0.1" }, allowed), false);
+  // With multiple forwarded values, the outermost (last) one is validated.
+  assert.equal(
+    isAllowedRequestHost({ host: "127.0.0.1", forwardedHost: "evil.example, proxy.example" }, allowed),
+    true,
+  );
+  assert.equal(
+    isAllowedRequestHost({ host: "127.0.0.1", forwardedHost: "proxy.example, evil.example" }, allowed),
+    false,
+  );
+  // A blank forwarded host is treated as absent.
+  assert.equal(isAllowedRequestHost({ host: "127.0.0.1", forwardedHost: "" }, allowed), true);
+});
+
+test("buildAllowedHostnames covers loopback, bind/link host, and explicit extras", () => {
+  const loopback = buildAllowedHostnames({ host: "127.0.0.1", linkHost: "127.0.0.1" });
+  assert.ok(loopback.has("127.0.0.1"));
+  assert.ok(loopback.has("::1"));
+  assert.ok(loopback.has("localhost"));
+
+  // A concrete non-loopback interface bind is allowlisted so its own hostname works.
+  const iface = buildAllowedHostnames({ host: "192.168.1.5", linkHost: "192.168.1.5" });
+  assert.ok(iface.has("192.168.1.5"));
+
+  // Wildcard binds are not connectable hostnames and never enter the allowlist.
+  const wildcard = buildAllowedHostnames({ host: "0.0.0.0", linkHost: "127.0.0.1" });
+  assert.equal(wildcard.has("0.0.0.0"), false);
+  assert.ok(wildcard.has("127.0.0.1"));
+
+  // Explicit extras are lowercased; the "*" sentinel is not a literal hostname.
+  const extras = buildAllowedHostnames({
+    host: "127.0.0.1",
+    linkHost: "127.0.0.1",
+    allowedHosts: ["Proxy.Example", "*"],
+  });
+  assert.ok(extras.has("proxy.example"));
+  assert.equal(extras.has("*"), false);
+});
+
+test("allowsAllHosts detects the '*' opt-out sentinel", () => {
+  assert.equal(allowsAllHosts(["*"]), true);
+  assert.equal(allowsAllHosts([" * "]), true);
+  assert.equal(allowsAllHosts(["proxy.example"]), false);
+  assert.equal(allowsAllHosts([]), false);
+});
 test("serve rejects fast when the bind host is unavailable", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   try {
@@ -1299,6 +1525,47 @@ test("layout warnings wake the same long-poll feedback channel as human prompts"
         persistent: false,
       },
     ]);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("warning-only layout observations do not wake the long-poll feedback channel", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const artifact = path.join(dir, "artifact.html");
+  await writeFile(artifact, "<!doctype html><html><body></body></html>");
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const open = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    const { key } = await open.json();
+
+    const response = await fetch(`${base}/api/${key}/layout-warnings`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        layout_warnings: [
+          {
+            selector: ".accent",
+            kind: "element-parent-overflow",
+            overflowPx: 20,
+            viewportWidth: 720,
+            severity: "warning",
+          },
+        ],
+      }),
+    });
+
+    assert.deepEqual(await response.json(), { status: "recorded", layout_warnings: 0 });
+    const poll = await fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}&timeoutMs=25`).then((res) =>
+      res.json(),
+    );
+    assert.deepEqual(poll, { status: "waiting" });
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });
@@ -2470,6 +2737,50 @@ test("SSE agent-presence resets to waiting after ending and reopening a session"
       assert.equal(await reopenedPresence.next(), "waiting");
     } finally {
       await reopenedPresence.close();
+    }
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("SSE agent-presence returns to waiting after an agent reply", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const artifact = path.join(dir, "artifact.html");
+  await writeFile(artifact, "<!doctype html><html><body></body></html>");
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const open = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    const { key } = await open.json();
+    const presence = await startPresenceStream(base, key);
+    try {
+      assert.equal(await presence.next(), "waiting");
+
+      await fetch(`${base}/api/${key}/prompts`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompts: [{ prompt: "hello", tag: "message" }] }),
+      });
+      // A poll that drains the feedback and releases leaves presence "working".
+      const feedback = await (await fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}`)).json();
+      await fetch(`${base}/api/${key}/feedback/${feedback.delivery_id}/ack`, { method: "POST" });
+      assert.equal(await presence.next(), "working");
+
+      // The reply concludes that work. Without a clear here, presence stays "working"
+      // forever (the chrome disables Send) until some future poll happens to attach.
+      await fetch(`${base}/api/${key}/agent-reply`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "done - applied your feedback" }),
+      });
+      assert.equal(await presence.next(), "waiting");
+    } finally {
+      await presence.close();
     }
   } finally {
     await server.close();

@@ -231,7 +231,13 @@ test("ideal, feedback, changed layout warnings, and agent replies append evoluti
     await store.queuePrompts(session.key, {
       prompts: [{ prompt: "Use less contrast", tag: "message" }],
     });
-    const warning = { selector: "html", kind: "overflow", overflowPx: 4, viewportWidth: 720 };
+    const warning = {
+      selector: "html",
+      kind: "page-horizontal-overflow",
+      overflowPx: 4,
+      viewportWidth: 720,
+      severity: "error",
+    };
     await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
     await store.recordLayoutWarnings(session.key, { layout_warnings: [warning] });
     await store.addAgentReply(session.key, "Applied the contrast change.");
