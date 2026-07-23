@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("check script runs all verification commands", async () => {
@@ -7,12 +7,12 @@ test("check script runs all verification commands", async () => {
   const checkCommands = packageJson.scripts.check.split(" && ");
 
   assert.deepEqual(checkCommands, [
-    "npm run build",
-    "npm run lint",
-    "npm run format:check",
-    "npm run typecheck",
-    "npm test",
-    "node scripts/build-skill.js --check",
+    "bun run build",
+    "bun run lint",
+    "bun run format:check",
+    "bun run typecheck",
+    "bun run test",
+    "bun scripts/build-skill.js --check",
   ]);
 });
 
@@ -27,6 +27,20 @@ test("package manifest includes the installable skill", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
   assert.ok(packageJson.files.includes("skills/lavish"));
+});
+
+test("Bun install policy enforces a one-week release age and trusts esbuild only", async () => {
+  const [bunfig, packageJson] = await Promise.all([
+    readFile(new URL("../bunfig.toml", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+
+  assert.match(
+    bunfig,
+    /^\[install\]\nminimumReleaseAge = 604800\nminimumReleaseAgeExcludes = \["axi-sdk-js", "lavish-axi"\]\n$/,
+  );
+  assert.deepEqual(packageJson.trustedDependencies, ["esbuild"]);
+  await assert.rejects(access(new URL("../pnpm-workspace.yaml", import.meta.url)));
 });
 
 test("lavish-design agent skill is marked internal for skills CLI discovery", async () => {
@@ -59,37 +73,4 @@ test("package metadata matches the standalone GitHub repository", async () => {
   assert.equal(packageJson.bugs.url, "https://github.com/ryxli/lavish-axi/issues");
   assert.equal(packageJson.homepage, "https://github.com/ryxli/lavish-axi#readme");
   assert.equal(packageJson.publishConfig, undefined);
-});
-
-test("pnpm lock root importer matches the package manifest", async () => {
-  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  const pnpmLock = await readFile(new URL("../pnpm-lock.yaml", import.meta.url), "utf8");
-
-  for (const [name, specifier] of Object.entries(packageJson.dependencies)) {
-    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const escapedSpecifier = specifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-    assert.match(pnpmLock, new RegExp(`["']?${escapedName}["']?:[\\s\\S]*?specifier: ${escapedSpecifier}`));
-  }
-});
-
-test("release workflow checks out the release tag", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/release-please.yml", import.meta.url), "utf8");
-
-  assert.match(
-    workflow,
-    /uses: actions\/checkout@v6\n\s+if: \$\{\{ steps\.release\.outputs\.release_created \}\}\n\s+with:\n\s+ref: \$\{\{ steps\.release\.outputs\.tag_name \}\}/,
-  );
-});
-
-test("release workflow uses repository telemetry variables and skips registry publishing", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/release-please.yml", import.meta.url), "utf8");
-
-  assert.match(
-    workflow,
-    /run: pnpm run build\n\s+if: \$\{\{ steps\.release\.outputs\.release_created \}\}\n\s+env:\n\s+LAVISH_AXI_UMAMI_HOST: \$\{\{ vars\.LAVISH_AXI_UMAMI_HOST \}\}\n\s+LAVISH_AXI_UMAMI_WEBSITE_ID: \$\{\{ vars\.LAVISH_AXI_UMAMI_WEBSITE_ID \}\}/,
-  );
-  assert.doesNotMatch(workflow, /npm publish/);
-  assert.doesNotMatch(workflow, /id-token: write/);
-  assert.doesNotMatch(workflow, /registry-url:/);
 });

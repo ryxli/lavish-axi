@@ -14,11 +14,11 @@ metadata:
 Lavish Editor turns explicitly requested rich HTML artifacts into collaborative human review surfaces.
 Use it only when the user invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact.
 Otherwise answer in plain chat.
-Generate the requested artifact, then run `bunx lavish-axi <html-file>` so the user can visually review it, annotate elements or selected text, queue prompts, and send feedback back through `bunx lavish-axi poll`.
+Generate the requested artifact, then run `lavish-axi <html-file>` so the user can visually review it, annotate elements or selected text, queue prompts, and send feedback back through `lavish-axi poll`.
 
-Install the lavish-axi CLI globally from the standalone ryxli/lavish-axi checkout before using this skill.
-Invoke it with `bunx lavish-axi <html-file>`.
-Run every follow-up command with the `bunx lavish-axi ...` prefix.
+Install dependencies with `bun install`, build the checkout with `bun run build`, then link it with `bun link` before using this skill.
+Invoke the checkout-owned executable with `lavish-axi <html-file>`.
+Run every follow-up command with the `lavish-axi ...` prefix.
 
 ## Request
 
@@ -38,10 +38,10 @@ Otherwise answer in plain chat.
 
 ## Workflow
 
-1. Run `bunx lavish-axi new --template <decision|plan|comparison|report> .lavish/<name>.html`.
+1. Run `lavish-axi new --template <decision|plan|comparison|report> .lavish/<name>.html`.
    Choose the closest fixed template, edit only the generated content slots, and remove irrelevant sections.
-2. Run `bunx lavish-axi <html-file>` to open or resume a review session in the browser.
-3. Run `bunx lavish-axi poll <html-file>` to long-poll for the user's annotations, queued prompts, and browser-proven severe layout failures returned as `layout_warnings`.
+2. Run `lavish-axi <html-file>` to open or resume a review session in the browser.
+3. Run `lavish-axi poll <html-file>` to long-poll for the user's annotations, queued prompts, and browser-proven severe layout failures returned as `layout_warnings`.
    On the first poll, prefer `--agent-reply "<one-line summary of what you built and what to review first>"` so the conversation panel opens with context.
    The poll stays silent until the user acts or the real browser proves meaningful content is inaccessible or unusable - leave it running, never kill it.
    Cosmetic, intentional, transient, tiny, and uncertain observations remain silent.
@@ -53,7 +53,7 @@ Otherwise answer in plain chat.
    If the poll gets killed or times out anyway, just re-run it - queued feedback is never lost.
 4. If poll returns `layout_warnings`, follow the returned `next_step`: repair and re-check fresh severe failures before involving the human; if every current warning is persistent or low-severity, proceed with a note instead of looping.
 5. Apply human feedback, then poll again with `--agent-reply "<message>"` to reply in the browser and keep the loop going under the same foreground-or-verified-wake-path rule.
-6. Run `bunx lavish-axi end <html-file>` when the review is finished.
+6. Run `lavish-axi end <html-file>` when the review is finished.
 7. `Send & End` ends the session. Its final feedback is still delivered once. After that response, polling stops, and the agent must not reopen the session uninvited. Deliver any remaining updates directly in this conversation.
 
 ## Visual guidance
@@ -66,10 +66,10 @@ Otherwise answer in plain chat.
 
 ## Playbooks
 
-Run `bunx lavish-axi playbook <id>` for focused, detailed guidance on any of these.
+Run `lavish-axi playbook <id>` for focused, detailed guidance on any of these.
 One artifact often combines several playbooks (for example a plan that includes a comparison and a diagram), so MUST open each matching playbook before writing HTML.
 For flows, architecture, state, or sequence diagrams, do not hand-build boxes-and-arrows from div/flexbox.
-Open the diagram playbook and use the theme-aware Mermaid snippet from `bunx lavish-axi design` unless SVG is needed for richly annotated nodes.
+Open the diagram playbook and use the theme-aware Mermaid snippet from `lavish-axi design` unless SVG is needed for richly annotated nodes.
 
 - `diagram` - Map relationships, flows, state, and architecture
 - `table` - Turn dense records into scan-friendly review surfaces
@@ -81,13 +81,13 @@ Open the diagram playbook and use the theme-aware Mermaid snippet from `bunx lav
 
 ## Commands & rules
 
-- Run `bunx lavish-axi <html-file>` to open or resume a Lavish Editor session.
+- Run `lavish-axi <html-file>` to open or resume a Lavish Editor session.
   If the user explicitly ended the session from the browser, this refuses to reopen it and explains why instead of reopening uninvited - pass `--reopen` only when the user asks for further review or something important needs their visual attention
 - Unless the user specifies another location, create HTML artifacts in the current working directory under `.lavish/`
 - Lavish serves the html file through a local express.js server.
   If your html needs to reference other filesystem assets such as images, CSS, fonts, and local scripts, copy them into the same directory as the HTML file, then reference them with relative paths from that directory.
   Never prepend `/` to those asset paths - root paths won't work
-- Run `bunx lavish-axi poll <html-file>` to wait for user feedback or browser-proven severe layout failures.
+- Run `lavish-axi poll <html-file>` to wait for user feedback or browser-proven severe layout failures.
   It long-polls and stays silent until the user sends feedback, ends the session, or the real browser proves meaningful content is inaccessible or unusable, so leave it running - never kill it.
   Repair and re-check every returned layout failure before involving the human; cosmetic, intentional, transient, tiny, and uncertain observations stay silent.
   Keep the poll in the foreground by default and let it return the feedback directly to the agent.
@@ -102,23 +102,23 @@ Open the diagram playbook and use the theme-aware Mermaid snippet from `bunx lav
   Scenes autosave locally; when a reload detects a changed Mermaid source, the reviewer explicitly chooses to re-convert and discard saved edits or keep editing the saved scene.
   Standalone and exported copies still render plain Mermaid.
   Queue feedback adds a prompt to the Conversation panel; when the user sends it, poll returns a tag "whiteboard" prompt carrying a bounded edit summary plus local scenePath (.excalidraw JSON) and previewPath (PNG) files - read the summary first, open the files only when needed, then apply the edits by updating the Mermaid source in the artifact (never try to write the scene back)
-- Run `bunx lavish-axi end <html-file>` to end a session as the agent - ending it this way still allows a plain reopen later.
-  When the user ends it from the browser instead, a later `bunx lavish-axi <html-file>` refuses to reopen it without `--reopen`
-- Run `bunx lavish-axi export <html-file> [--out <path>]` to write a portable copy of the artifact - one HTML file with its LOCAL assets inlined - so it opens with no Lavish server and no sibling files.
+- Run `lavish-axi end <html-file>` to end a session as the agent - ending it this way still allows a plain reopen later.
+  When the user ends it from the browser instead, a later `lavish-axi <html-file>` refuses to reopen it without `--reopen`
+- Run `lavish-axi export <html-file> [--out <path>]` to write a portable copy of the artifact - one HTML file with its LOCAL assets inlined - so it opens with no Lavish server and no sibling files.
   Remote CDN/font references are left as links, so it needs network to render those.
   Users can also export from the browser chrome's overflow menu
-- Run `bunx lavish-axi share <html-file> [--password <pw>] [--token <t>]` to publish the artifact on ht-ml.app (https://ht-ml.app), a third-party hosting service not part of Lavish, and get back a visitable URL.
+- Run `lavish-axi share <html-file> [--password <pw>] [--token <t>]` to publish the artifact on ht-ml.app (https://ht-ml.app), a third-party hosting service not part of Lavish, and get back a visitable URL.
   Shares are PUBLIC by default, so anyone with the link can open them.
   Pass --password to publish a PRIVATE password-protected page; viewers must supply the password to view.
   Local assets are inlined; remote refs load over the network.
   It returns the url plus a secret update_key for managing the page later.
   Use --token or LAVISH_AXI_HTML_APP_TOKEN only when you have an optional bearer token; it is never required.
   Users can also publish from the browser chrome's overflow menu
-- Run `bunx lavish-axi stop` to shut down the background server (it also self-stops when idle or after the last session ends with nothing connected)
-- Run `bunx lavish-axi playbook <playbook_id>` for focused artifact guidance.
+- Run `lavish-axi stop` to shut down the background server (it also self-stops when idle or after the last session ends with nothing connected)
+- Run `lavish-axi playbook <playbook_id>` for focused artifact guidance.
   One artifact often combines several playbooks (for example a plan that includes a comparison and a diagram), so MUST open each matching playbook before writing HTML.
 - Lavish does not auto-inject any design system - artifacts stay portable so they render identically when opened directly without lavish-axi running.
   Before writing any HTML: Decide the design direction in this strict priority order, and only move to the next step when the current one truly yields nothing: (1) if the user asked for a specific look or named design system, use that; (2) otherwise you must first inspect the project the artifact is about - the subject or product whose content or UI it represents, which may differ from your current working directory - and match that project's design system: Tailwind or theme config, shared CSS variables or design tokens, component library, brand assets, or existing styled pages.
   If the artifact previews, proposes, or mocks a specific app's UI, render it in that app's own design system so it faithfully shows the product, even when you are running in a different repo; (3) only when both steps come up empty, use the Lavish-recommended Tailwind CSS browser runtime v4 + DaisyUI v5, available via CDN, and prefer that CDN snippet over hand-writing styles unless explicitly instructed otherwise by the user.
-  Run `bunx lavish-axi design` for a content-to-playbook router, a copy-pasteable CDN snippet, a Mermaid CDN snippet/init for diagrams, and the DaisyUI component reference.
+  Run `lavish-axi design` for a content-to-playbook router, a copy-pasteable CDN snippet, a Mermaid CDN snippet/init for diagrams, and the DaisyUI component reference.
   When you deliver the artifact, state which of the three design sources you used and why.

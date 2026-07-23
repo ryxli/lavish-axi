@@ -5,6 +5,7 @@ node_modules
 .no-mistakes
 lavish-code-review.html
 package-lock.json
+bun.lock
 CHANGELOG.md
 .agents
 .claude/settings.local.json

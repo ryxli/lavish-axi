@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AxiError, installSessionStartHooks, RESERVED_COMMANDS, runAxiCli } from "axi-sdk-js";
+import { AxiError, installSessionStartHooks, runAxiCli } from "axi-sdk-js";
 
 import { createDesignOutput, DESIGN_PRIORITY_RULE, DESIGN_SYSTEM_HINT } from "./design-reference.js";
 import {
@@ -36,9 +36,6 @@ const COMMANDS = new Set([
   "new",
   "retry",
 ]);
-// SDK-reserved built-ins (e.g. `update`) must reach runAxiCli untouched; otherwise
-// the bare-arg normalization below would rewrite them into the hidden `open` command.
-const RESERVED = new Set(RESERVED_COMMANDS);
 const DESCRIPTION =
   "Lavish Editor turns explicitly requested rich HTML artifacts into collaborative human review surfaces. " +
   "Use it only when the user invokes `/lavish`, explicitly asks to use Lavish, or asks for an HTML, interactive, annotatable, or browser-based visual artifact. " +
@@ -136,7 +133,7 @@ export function collapseHomeDirectory(file, home) {
 
 export function normalizeArgv(argv) {
   const first = argv[0];
-  if (!first || COMMANDS.has(first) || RESERVED.has(first)) {
+  if (!first || COMMANDS.has(first)) {
     return argv;
   }
   if (first.startsWith("-")) {
